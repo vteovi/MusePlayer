@@ -164,9 +164,16 @@ fun PlayerScreen(
     var showAudioSheet by remember { mutableStateOf(false) }
     var showSubtitleSheet by remember { mutableStateOf(false) }
     var showAspectSheet by remember { mutableStateOf(false) }
+    var showDecoderSheet by remember { mutableStateOf(false) }
     var surfaceRotation by remember { mutableIntStateOf(0) }
     var showCustomRatioDialog by remember { mutableStateOf(false) }
     val settings by SettingsRepository.state.collectAsStateWithLifecycle()
+    // 解码方式：0 自动（硬解优先）、1 硬解、2 软解（常量含义与设置页保持一致）
+    val decoderLabel = when (settings.decoderMode) {
+        1 -> "软解"
+        2 -> "硬解"
+        else -> "自动"
+    }
 
     // 拖动进度时的画面预览
     var previewVisible by remember { mutableStateOf(false) }
@@ -294,9 +301,9 @@ fun PlayerScreen(
     }
 
     // 控制栏自动隐藏
-    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet) {
+    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet, showDecoderSheet) {
         if (controlsVisible && state.isPlaying && !locked &&
-            !showSpeedSheet && !showAudioSheet && !showSubtitleSheet && !showAspectSheet
+            !showSpeedSheet && !showAudioSheet && !showSubtitleSheet && !showAspectSheet && !showDecoderSheet
         ) {
             delay(4500)
             controlsVisible = false
@@ -861,6 +868,17 @@ fun PlayerScreen(
                                 fontWeight = FontWeight.Medium
                             )
                         }
+                        TextButton(onClick = { showDecoderSheet = true }) {
+                            Text(
+                                text = decoderLabel,
+                                color = if (settings.decoderMode == 0) {
+                                    Color.White
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                         IconButton(onClick = { showSubtitleSheet = true }) {
                             Icon(
                                 Icons.Rounded.Subtitles,
@@ -1013,6 +1031,38 @@ fun PlayerScreen(
                     showSubtitleSheet = false
                     subtitlePicker.launch(arrayOf("*/*"))
                 }
+            }
+        }
+    }
+
+    // 解码方式
+    if (showDecoderSheet) {
+        ModalBottomSheet(onDismissRequest = { showDecoderSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp)
+            ) {
+                SheetTitle("解码方式（当前：$decoderLabel）")
+                SheetOption("自动（硬解优先，失败转软解）", settings.decoderMode == 0) {
+                    SettingsRepository.setDecoderMode(0)
+                    showDecoderSheet = false
+                }
+                SheetOption("硬件解码", settings.decoderMode == 2) {
+                    SettingsRepository.setDecoderMode(2)
+                    showDecoderSheet = false
+                }
+                SheetOption("软件解码", settings.decoderMode == 1) {
+                    SettingsRepository.setDecoderMode(1)
+                    showDecoderSheet = false
+                }
+                Text(
+                    text = "切换后会重新加载当前视频，进度保持不变",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                )
             }
         }
     }
