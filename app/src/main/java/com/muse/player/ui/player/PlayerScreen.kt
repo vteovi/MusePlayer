@@ -129,6 +129,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.muse.player.R
 import com.muse.player.data.SettingsRepository
+import com.muse.player.playback.DecoderStatus
 import com.muse.player.util.SeekPreviewLoader
 import com.muse.player.util.formatDuration
 import kotlinx.coroutines.delay
@@ -164,16 +165,14 @@ fun PlayerScreen(
     var showAudioSheet by remember { mutableStateOf(false) }
     var showSubtitleSheet by remember { mutableStateOf(false) }
     var showAspectSheet by remember { mutableStateOf(false) }
-    var showDecoderSheet by remember { mutableStateOf(false) }
     var surfaceRotation by remember { mutableIntStateOf(0) }
     var showCustomRatioDialog by remember { mutableStateOf(false) }
     val settings by SettingsRepository.state.collectAsStateWithLifecycle()
-    // 解码方式：0 自动（硬解优先）、1 硬解、2 软解（常量含义与设置页保持一致）
-    val decoderLabel = when (settings.decoderMode) {
-        1 -> "软解"
-        2 -> "硬解"
-        else -> "自动"
-    }
+    // 显示实际使用的解码器：优先用播放服务上报的真实解码器，未起播时按设置推断
+    val decoderName by DecoderStatus.decoderName.collectAsStateWithLifecycle()
+    val hardwareDecoding = decoderName?.let { DecoderStatus.isHardware(it) }
+        ?: (settings.decoderMode != 1)
+    val decoderLabel = if (hardwareDecoding) "硬解" else "软解"
 
     // 切换解码方式时播放服务会重建播放器，PlayerView 的画面输出仍绑在旧播放器上，
     // 需要重新绑定一次，否则会出现有声音、进度在走但画面全黑
@@ -314,9 +313,9 @@ fun PlayerScreen(
     }
 
     // 控制栏自动隐藏
-    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet, showDecoderSheet) {
+    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet) {
         if (controlsVisible && state.isPlaying && !locked &&
-            !showSpeedSheet && !showAudioSheet && !showSubtitleSheet && !showAspectSheet && !showDecoderSheet
+            !showSpeedSheet && !showAudioSheet && !showSubtitleSheet && !showAspectSheet
         ) {
             delay(4500)
             controlsVisible = false
@@ -882,14 +881,16 @@ fun PlayerScreen(
                                 fontWeight = FontWeight.Medium
                             )
                         }
-                        TextButton(onClick = { showDecoderSheet = true }) {
+                        TextButton(onClick = {
+                            // 一键在硬解 / 软解之间切换，清空旧状态让按钮立即显示目标模式
+                            DecoderStatus.update(null)
+                            SettingsRepository.setDecoderMode(
+                                if (hardwareDecoding) 1 else 2
+                            )
+                        }) {
                             Text(
                                 text = decoderLabel,
-                                color = if (settings.decoderMode == 0) {
-                                    Color.White
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                },
+                                color = Color.White,
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -1045,38 +1046,6 @@ fun PlayerScreen(
                     showSubtitleSheet = false
                     subtitlePicker.launch(arrayOf("*/*"))
                 }
-            }
-        }
-    }
-
-    // 解码方式
-    if (showDecoderSheet) {
-        ModalBottomSheet(onDismissRequest = { showDecoderSheet = false }) {
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp)
-            ) {
-                SheetTitle("解码方式（当前：$decoderLabel）")
-                SheetOption("自动（硬解优先，失败转软解）", settings.decoderMode == 0) {
-                    SettingsRepository.setDecoderMode(0)
-                    showDecoderSheet = false
-                }
-                SheetOption("硬件解码", settings.decoderMode == 2) {
-                    SettingsRepository.setDecoderMode(2)
-                    showDecoderSheet = false
-                }
-                SheetOption("软件解码", settings.decoderMode == 1) {
-                    SettingsRepository.setDecoderMode(1)
-                    showDecoderSheet = false
-                }
-                Text(
-                    text = "切换后会重新加载当前视频，进度保持不变",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                )
             }
         }
     }

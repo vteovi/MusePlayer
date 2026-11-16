@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.datasource.cache.CacheDataSource
@@ -26,6 +27,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -150,6 +154,19 @@ class PlaybackService : MediaSessionService() {
         .setSeekBackIncrementMs(10_000)
         .setSeekForwardIncrementMs(10_000)
         .build()
+        .apply {
+            // 记录实际初始化的视频解码器，播放界面据此显示硬解 / 软解
+            addAnalyticsListener(object : AnalyticsListener {
+                override fun onVideoDecoderInitialized(
+                    eventTime: AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long
+                ) {
+                    DecoderStatus.update(decoderName)
+                }
+            })
+        }
     }
 
     private fun buildRenderersFactory(): DefaultRenderersFactory {
@@ -242,5 +259,30 @@ class PlaybackService : MediaSessionService() {
         const val DECODER_AUTO = 0
         const val DECODER_SOFTWARE = 1
         const val DECODER_HARDWARE = 2
+    }
+}
+
+/**
+ * 当前实际使用的视频解码器：播放服务在解码器初始化时写入，播放界面读取展示。
+ * Media3 的 Player 接口不暴露解码器信息，因此用同进程共享状态传递。
+ */
+object DecoderStatus {
+
+    private val _decoderName = MutableStateFlow<String?>(null)
+    val decoderName: StateFlow<String?> = _decoderName.asStateFlow()
+
+    fun update(name: String?) {
+        _decoderName.value = name
+    }
+
+    /** 判断解码器是否为硬件解码（Google/AOSP 提供的通用实现视为软解） */
+    fun isHardware(name: String): Boolean {
+        val lower = name.lowercase()
+        val software = lower.startsWith("omx.google.") ||
+            lower.startsWith("c2.android.") ||
+            lower.startsWith("c2.google.") ||
+            lower.contains("software") ||
+            lower.contains("ffmpeg")
+        return !software
     }
 }
