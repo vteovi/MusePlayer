@@ -213,6 +213,8 @@ class PlaybackService : MediaSessionService() {
         fresh.shuffleModeEnabled = shuffleEnabled
         fresh.playWhenReady = playWhenReady
         old.release()
+        // 通知界面：会话里的播放器已替换，需要重新绑定画面输出
+        DecoderStatus.notifyPlayerSwapped()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -270,6 +272,14 @@ object DecoderStatus {
 
     private val _decoderName = MutableStateFlow<String?>(null)
     val decoderName: StateFlow<String?> = _decoderName.asStateFlow()
+
+    // 播放器重建计数：界面据此在播放器真正替换后重新绑定画面输出
+    private val _swapTick = MutableStateFlow(0)
+    val swapTick: StateFlow<Int> = _swapTick.asStateFlow()
+
+    fun notifyPlayerSwapped() {
+        _swapTick.value += 1
+    }
 
     fun update(name: String?) {
         _decoderName.value = name

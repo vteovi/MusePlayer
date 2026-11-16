@@ -175,17 +175,9 @@ fun PlayerScreen(
     val decoderLabel = if (hardwareDecoding) "硬解" else "软解"
 
     // 切换解码方式时播放服务会重建播放器，PlayerView 的画面输出仍绑在旧播放器上，
-    // 需要重新绑定一次，否则会出现有声音、进度在走但画面全黑
-    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
-    val initialDecoderMode = remember { settings.decoderMode }
-    LaunchedEffect(settings.decoderMode) {
-        if (settings.decoderMode == initialDecoderMode) return@LaunchedEffect
-        delay(400)
-        playerViewRef?.let { view ->
-            view.player = null
-            view.player = viewModel.player
-        }
-    }
+    // 需要重新绑定，否则会出现有声音、进度在走但画面全黑。
+    // 以服务上报的「播放器已替换」计数作为 key，强制重建 PlayerView，保证画面绑到新播放器。
+    val swapTick by DecoderStatus.swapTick.collectAsStateWithLifecycle()
 
     // 拖动进度时的画面预览
     var previewVisible by remember { mutableStateOf(false) }
@@ -361,7 +353,8 @@ fun PlayerScreen(
             }
             if (state.connected) {
                 // 旋转画面时必须使用 TextureView：SurfaceView 无法应用旋转/缩放变换
-                key(rotated) {
+                // 切换解码器后播放器实例被替换，重建 PlayerView 以重新绑定画面输出
+                key(rotated, swapTick) {
                     AndroidView(
                         factory = { ctx ->
                             val view = if (rotated) {
@@ -375,7 +368,6 @@ fun PlayerScreen(
                                 setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                                 player = viewModel.player
-                                playerViewRef = this
                             }
                         },
                         update = { view ->
