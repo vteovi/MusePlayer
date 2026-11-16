@@ -175,6 +175,19 @@ fun PlayerScreen(
         else -> "自动"
     }
 
+    // 切换解码方式时播放服务会重建播放器，PlayerView 的画面输出仍绑在旧播放器上，
+    // 需要重新绑定一次，否则会出现有声音、进度在走但画面全黑
+    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
+    val initialDecoderMode = remember { settings.decoderMode }
+    LaunchedEffect(settings.decoderMode) {
+        if (settings.decoderMode == initialDecoderMode) return@LaunchedEffect
+        delay(400)
+        playerViewRef?.let { view ->
+            view.player = null
+            view.player = viewModel.player
+        }
+    }
+
     // 拖动进度时的画面预览
     var previewVisible by remember { mutableStateOf(false) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -363,6 +376,7 @@ fun PlayerScreen(
                                 setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                                 player = viewModel.player
+                                playerViewRef = this
                             }
                         },
                         update = { view ->
