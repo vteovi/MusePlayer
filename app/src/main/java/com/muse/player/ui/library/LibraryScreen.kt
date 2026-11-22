@@ -228,9 +228,12 @@ fun LibraryScreen(
             LibraryTab(3, "NETWORK", "网络", Icons.Rounded.Dns)
         )
     }
-    // 分栏都可以在设置里隐藏，但至少保留一个
-    val tabs = remember(appSettings.hiddenTabs) {
-        allTabs.filter { it.key !in appSettings.hiddenTabs }.ifEmpty { allTabs.take(1) }
+    // 分栏顺序由设置决定，隐藏的分栏再过滤掉，但至少保留一个
+    val tabs = remember(appSettings.tabOrder, appSettings.hiddenTabs) {
+        appSettings.tabOrder
+            .mapNotNull { key -> allTabs.firstOrNull { it.key == key } }
+            .filter { it.key !in appSettings.hiddenTabs }
+            .ifEmpty { allTabs.take(1) }
     }
     // 媒体库视图模式：0 = 视频，1 = 文件夹（持久化，下次打开保持上次选择）
     var mediaMode by rememberSaveable {

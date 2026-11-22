@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -165,6 +167,37 @@ fun SettingsScreen(navController: NavController) {
                 checked = "NETWORK" !in settings.hiddenTabs,
                 onCheckedChange = { SettingsRepository.setTabVisible("NETWORK", it) }
             )
+            Text(
+                text = "分栏顺序",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp)
+            )
+            settings.tabOrder.forEachIndexed { index, key ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = tabTitle(key),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { SettingsRepository.moveTab(key, -1) },
+                        enabled = index > 0
+                    ) {
+                        Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "上移")
+                    }
+                    IconButton(
+                        onClick = { SettingsRepository.moveTab(key, 1) },
+                        enabled = index < settings.tabOrder.lastIndex
+                    ) {
+                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "下移")
+                    }
+                }
+            }
             Text(
                 text = "至少保留一个分栏，最后一个开启的分栏无法关闭",
                 style = MaterialTheme.typography.bodySmall,
@@ -450,4 +483,12 @@ private fun openAllFilesAccess(context: Context) {
         } catch (_: Exception) {
         }
     }
+}
+
+private fun tabTitle(key: String): String = when (key) {
+    "MEDIA" -> "媒体库"
+    "HISTORY" -> "历史"
+    "BROWSE" -> "浏览"
+    "NETWORK" -> "网络"
+    else -> key
 }

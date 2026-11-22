@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+// 导航栏全部分栏，用于保证至少保留一个，同时作为默认顺序
+private val TAB_KEYS = listOf("MEDIA", "HISTORY", "BROWSE", "NETWORK")
+
 data class AppSettings(
     val themeMode: Int = 0,          // 0 跟随系统, 1 浅色, 2 深色
     val autoResume: Boolean = true,  // 续播
@@ -28,13 +31,12 @@ data class AppSettings(
     val repeatMode: Int = 0, // 0 顺序播放, 1 单曲循环, 2 列表循环
     val shuffleEnabled: Boolean = false, // 随机播放
     val lowPerformanceMode: Boolean = false, // 低性能模式：不加载视频缩略图
-    val hiddenTabs: Set<String> = emptySet() // 导航栏中隐藏的分栏（MEDIA / HISTORY / BROWSE / NETWORK）
+    val hiddenTabs: Set<String> = emptySet(), // 导航栏中隐藏的分栏（MEDIA / HISTORY / BROWSE / NETWORK）
+    val tabOrder: List<String> = TAB_KEYS // 导航栏分栏顺序
 )
 
 object SettingsRepository {
     private const val PREFS = "muse_settings"
-    // 导航栏全部分栏，用于保证至少保留一个
-    private val TAB_KEYS = listOf("MEDIA", "HISTORY", "BROWSE", "NETWORK")
     private lateinit var sp: SharedPreferences
     private val _state = MutableStateFlow(AppSettings())
     val state: StateFlow<AppSettings> = _state.asStateFlow()
@@ -63,7 +65,13 @@ object SettingsRepository {
             repeatMode = sp.getInt("repeat_mode", 0),
             shuffleEnabled = sp.getBoolean("shuffle_enabled", false),
             lowPerformanceMode = sp.getBoolean("low_performance_mode", false),
-            hiddenTabs = sp.getStringSet("hidden_tabs", emptySet())?.toSet() ?: emptySet()
+            hiddenTabs = sp.getStringSet("hidden_tabs", emptySet())?.toSet() ?: emptySet(),
+            tabOrder = sp.getString("tab_order", null)
+                ?.split(',')
+                ?.filter { it.isNotBlank() }
+                // 补上历史数据里可能缺失的分栏，保证四个都在
+                ?.let { saved -> saved + TAB_KEYS.filterNot(saved::contains) }
+                ?: TAB_KEYS
         )
     }
 
@@ -190,5 +198,17 @@ object SettingsRepository {
         if (TAB_KEYS.all { it in updated }) return
         sp.edit().putStringSet("hidden_tabs", updated).apply()
         _state.value = _state.value.copy(hiddenTabs = updated)
+    }
+
+    /** 上移 / 下移分栏，offset 为 -1 或 1 */
+    fun moveTab(key: String, offset: Int) {
+        val order = _state.value.tabOrder.toMutableList()
+        val from = order.indexOf(key)
+        if (from == -1) return
+        val to = (from + offset).coerceIn(0, order.lastIndex)
+        if (to == from) return
+        order.add(to, order.removeAt(from))
+        sp.edit().putString("tab_order", order.joinToString(",")).apply()
+        _state.value = _state.value.copy(tabOrder = order)
     }
 }
