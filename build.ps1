@@ -50,8 +50,12 @@ try {
         }
 
         $apkRoot = Join-Path $root "app\build\outputs\apk"
-        $apks = @(Get-ChildItem -Path $apkRoot -Recurse -Filter "*.apk" -ErrorAction SilentlyContinue |
-            Where-Object { $_.DirectoryName -match '\\release$' })
+        # 只取 full / lite 两个 flavor 的产物；
+        # 旧的 apk\release 目录是无 flavor 时代的残留，递归扫描会把同一份 APK 再复制一遍
+        $apks = @(
+            Get-ChildItem -Path (Join-Path $apkRoot "full\release") -Filter "*.apk" -ErrorAction SilentlyContinue
+            Get-ChildItem -Path (Join-Path $apkRoot "lite\release") -Filter "*.apk" -ErrorAction SilentlyContinue
+        )
         if ($apks.Count -eq 0) {
             Write-Host "Release APK not found in: $apkRoot" -ForegroundColor Red
             $exitCode = 1
