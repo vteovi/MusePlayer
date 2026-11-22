@@ -21,7 +21,8 @@ if (-not (Test-Path $gradlew)) {
 
 # 构建结束后清理 Java 进程：先让 Gradle 守护进程正常退出，再清理残留的 JVM
 function Clear-JavaProcesses {
-    & $gradlew --stop 2>$null | Out-Null
+    # 守护进程停止失败不应影响构建结果（例如 Gradle 发行包正在被其他进程占用）
+    try { & $gradlew --stop 2>&1 | Out-Null } catch { }
     Start-Sleep -Milliseconds 800
     $java = @(Get-Process -Name java, javaw -ErrorAction SilentlyContinue)
     if ($java.Count -gt 0) {
