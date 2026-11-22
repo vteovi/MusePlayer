@@ -145,6 +145,9 @@ fun LibraryScreen(
     var allFilesAccess by remember { mutableStateOf(hasAllFilesAccess()) }
     var showSearch by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    // 历史分栏独立的关键词与排序，不影响媒体库
+    var historyQuery by rememberSaveable { mutableStateOf("") }
+    var historyNewestFirst by rememberSaveable { mutableStateOf(true) }
     var showOverflow by remember { mutableStateOf(false) }
     var showNetworkDialog by remember { mutableStateOf(false) }
     var infoVideo by remember { mutableStateOf<VideoItem?>(null) }
@@ -296,19 +299,24 @@ fun LibraryScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = {
-                        showSearch = !showSearch
-                        if (!showSearch) viewModel.setQuery("")
-                    }) {
-                        Icon(
-                            if (showSearch) Icons.Rounded.Close else Icons.Rounded.Search,
-                            contentDescription = "搜索"
-                        )
-                    }
-                    Box {
-                        IconButton(onClick = { showSortMenu = true }) {
-                            Icon(Icons.Rounded.Sort, contentDescription = "排序")
+                    if (state.tab == 0 || state.tab == 1) {
+                        IconButton(onClick = {
+                            showSearch = !showSearch
+                            if (!showSearch) {
+                                if (state.tab == 0) viewModel.setQuery("") else historyQuery = ""
+                            }
+                        }) {
+                            Icon(
+                                if (showSearch) Icons.Rounded.Close else Icons.Rounded.Search,
+                                contentDescription = "搜索"
+                            )
                         }
+                    }
+                    if (state.tab == 0) {
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.Rounded.Sort, contentDescription = "排序")
+                            }
                         DropdownMenu(
                             expanded = showSortMenu,
                             onDismissRequest = { showSortMenu = false }
@@ -330,6 +338,43 @@ fun LibraryScreen(
                                     },
                                     leadingIcon = {
                                         if (state.sortField == field) {
+                                            Icon(Icons.Rounded.Check, contentDescription = null)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    }
+                    if (state.tab == 1) {
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.Rounded.Sort, contentDescription = "排序")
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("最近播放") },
+                                    onClick = {
+                                        historyNewestFirst = true
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (historyNewestFirst) {
+                                            Icon(Icons.Rounded.Check, contentDescription = null)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("按名称") },
+                                    onClick = {
+                                        historyNewestFirst = false
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (!historyNewestFirst) {
                                             Icon(Icons.Rounded.Check, contentDescription = null)
                                         }
                                     }
@@ -367,7 +412,7 @@ fun LibraryScreen(
                                     }
                                 )
                             }
-                            DropdownMenuItem(
+                            if (state.tab == 0) DropdownMenuItem(
                                 text = { Text(if (state.grid) "列表视图" else "网格视图") },
                                 onClick = {
                                     viewModel.toggleGrid()
@@ -381,7 +426,7 @@ fun LibraryScreen(
                                     )
                                 }
                             )
-                            DropdownMenuItem(
+                            if (state.tab == 0) DropdownMenuItem(
                                 text = { Text("网络串流") },
                                 onClick = {
                                     showNetworkDialog = true
@@ -391,7 +436,7 @@ fun LibraryScreen(
                                     Icon(Icons.Rounded.Link, contentDescription = null)
                                 }
                             )
-                            DropdownMenuItem(
+                            if (state.tab == 0) DropdownMenuItem(
                                 text = { Text("刷新媒体库") },
                                 onClick = {
                                     viewModel.refresh()
@@ -453,19 +498,26 @@ fun LibraryScreen(
                     .weight(1f)
                     .fillMaxSize()
             ) {
-            if (showSearch) {
+            if (showSearch && state.tab <= 1) {
+                val searchText = if (state.tab == 0) state.query else historyQuery
                 OutlinedTextField(
-                    value = state.query,
-                    onValueChange = viewModel::setQuery,
+                    value = searchText,
+                    onValueChange = {
+                        if (state.tab == 0) viewModel.setQuery(it) else historyQuery = it
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
-                    placeholder = { Text("搜索视频名称") },
+                    placeholder = {
+                        Text(if (state.tab == 0) "搜索视频名称" else "搜索播放记录")
+                    },
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                     trailingIcon = {
-                        if (state.query.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setQuery("") }) {
+                        if (searchText.isNotEmpty()) {
+                            IconButton(onClick = {
+                                if (state.tab == 0) viewModel.setQuery("") else historyQuery = ""
+                            }) {
                                 Icon(Icons.Rounded.Close, contentDescription = "清空")
                             }
                         }
@@ -578,8 +630,21 @@ fun LibraryScreen(
                 }
 
                 1 -> {
+                    // 历史记录在本地做关键词过滤与排序，不改变仓库里的原始顺序
+                    val historyList = remember(state.history, historyQuery, historyNewestFirst) {
+                        val matched = if (historyQuery.isBlank()) {
+                            state.history
+                        } else {
+                            state.history.filter {
+                                it.title.contains(historyQuery, ignoreCase = true)
+                            }
+                        }
+                        if (historyNewestFirst) matched else matched.sortedBy { it.title.lowercase() }
+                    }
                     if (state.history.isEmpty()) {
                         EmptyState("暂无播放记录", "播放过的视频会出现在这里")
+                    } else if (historyList.isEmpty()) {
+                        EmptyState("没有匹配的记录", "试试其他关键词")
                     } else {
                         // 媒体库可能有几千条，建 uri 索引放到后台线程，
                         // 避免滑动进入历史分栏的那一帧在主线程上做大量映射
@@ -604,7 +669,7 @@ fun LibraryScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "${state.history.size} 条记录",
+                                        text = "${historyList.size} 条记录",
                                         style = MaterialTheme.typography.labelLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.weight(1f)
@@ -614,7 +679,7 @@ fun LibraryScreen(
                                     }
                                 }
                             }
-                            items(state.history, key = { it.uri }) { entry ->
+                            items(historyList, key = { it.uri }) { entry ->
                                 HistoryRow(
                                     entry = entry,
                                     video = videoByUri[entry.uri],
