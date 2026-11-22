@@ -31,7 +31,7 @@ class VlcEngine(context: Context) {
 
     fun attachView(view: VLCVideoLayout) = Unit
 
-    fun play(url: String, startMs: Long, speed: Float) = Unit
+    fun play(url: String, startMs: Long, speed: Float, subtitleSize: Int) = Unit
 
     fun addSubtitle(url: String) = Unit
 

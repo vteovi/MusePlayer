@@ -108,6 +108,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
     private val vlc: VlcEngine by vlcHolder
     private var usingVlc = false
+    // 兼容引擎已应用的字幕字号，设置变化时重新打开当前媒体
+    private var appliedSubtitleSize = SettingsRepository.state.value.subtitleSize
 
     private data class PendingStart(val entries: List<PlayEntry>, val index: Int, val positionMs: Long)
 
@@ -415,7 +417,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         controller.pause()
         usingVlc = true
-        vlc.play(url, position, speed)
+        vlc.play(url, position, speed, SettingsRepository.state.value.subtitleSize)
         applyVlcAspect(_state.value.aspectMode)
         loadVlcSubtitles(entry)
         _state.update {
@@ -442,7 +444,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun playVlcIndex(index: Int) {
         val entry = entries.getOrNull(index) ?: return
         val url = vlcUrl(entry) ?: return
-        vlc.play(url, 0L, _state.value.speed)
+        vlc.play(url, 0L, _state.value.speed, SettingsRepository.state.value.subtitleSize)
         applyVlcAspect(_state.value.aspectMode)
         loadVlcSubtitles(entry)
         _state.update {
@@ -487,6 +489,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         path.startsWith("muse+") -> vlcUrl(path, null)
         path.startsWith("content://") -> path
         else -> File(path).takeIf { it.exists() }?.let { Uri.fromFile(it).toString() }
+    }
+
+    /** 字幕字号变化时让兼容引擎重新打开当前媒体（libVLC 只在新媒体打开时读取字号） */
+    fun applySubtitleSize() {
+        val size = SettingsRepository.state.value.subtitleSize
+        if (size == appliedSubtitleSize) return
+        appliedSubtitleSize = size
+        if (!usingVlc) return
+        val entry = entries.getOrNull(_state.value.itemIndex) ?: return
+        val url = vlcUrl(entry) ?: return
+        vlc.play(url, _state.value.positionMs, _state.value.speed, size)
+        applyVlcAspect(_state.value.aspectMode)
+        loadVlcSubtitles(entry)
     }
 
     /** 内部协议地址转成 libVLC 可直接打开的地址（SMB/FTP 需要把凭据放进 URL） */
@@ -963,7 +978,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val entry = entries.getOrNull(_state.value.itemIndex) ?: return
             val url = vlcUrl(entry) ?: return
             _state.update { it.copy(error = null, isBuffering = true) }
-            vlc.play(url, _state.value.positionMs, _state.value.speed)
+            vlc.play(url, _state.value.positionMs, _state.value.speed, SettingsRepository.state.value.subtitleSize)
             loadVlcSubtitles(entry)
             return
         }

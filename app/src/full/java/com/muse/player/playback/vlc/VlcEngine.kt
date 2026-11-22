@@ -23,6 +23,14 @@ class VlcEngine(context: Context) {
     companion object {
         /** 完整版带 libVLC 原生库，可做解码兜底 */
         const val SUPPORTED = true
+
+        /** 字幕字号档位对应 libVLC freetype 的相对字号（默认 16） */
+        private fun subtitleRelFontSize(size: Int): Int = when (size) {
+            0 -> 12
+            1 -> 16
+            2 -> 20
+            else -> 26
+        }
     }
 
 
@@ -60,7 +68,7 @@ class VlcEngine(context: Context) {
         mediaPlayer?.attachViews(view, null, true, false)
     }
 
-    fun play(url: String, startMs: Long, speed: Float) {
+    fun play(url: String, startMs: Long, speed: Float, subtitleSize: Int) {
         stop()
         pendingSeekMs = startMs.coerceAtLeast(0L)
         pendingSpeed = speed
@@ -74,6 +82,8 @@ class VlcEngine(context: Context) {
             setHWDecoderEnabled(false, false)
             addOption(":network-caching=2000")
             addOption(":file-caching=2000")
+            // 字号只在打开媒体时读取，设置变化时由调用方重新打开
+            addOption(":freetype-rel-fontsize=${subtitleRelFontSize(subtitleSize)}")
         }
         media = item
         player.media = item

@@ -9,6 +9,7 @@ import android.net.Uri
 import android.graphics.Bitmap
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -127,6 +128,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.muse.player.R
 import com.muse.player.data.SettingsRepository
@@ -146,6 +148,14 @@ private data class GestureHint(val type: GestureType, val text: String)
 private fun formatSpeed(speed: Float): String =
     if (speed == speed.toInt().toFloat()) "${speed.toInt()}x"
     else String.format(Locale.US, "%.2fx", speed)
+
+/** 设置中的字幕字号档位对应到 sp */
+private fun subtitleTextSizeSp(size: Int): Float = when (size) {
+    0 -> 14f
+    1 -> 18f
+    2 -> 22f
+    else -> 27f
+}
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -198,6 +208,10 @@ fun PlayerScreen(
     var surfaceRotation by remember { mutableIntStateOf(0) }
     var showCustomRatioDialog by remember { mutableStateOf(false) }
     val settings by SettingsRepository.state.collectAsStateWithLifecycle()
+    // 字幕字号变化时同步给兼容引擎（libVLC 需重新打开媒体才能应用新字号）
+    LaunchedEffect(settings.subtitleSize) {
+        viewModel.applySubtitleSize()
+    }
 
     // 拖动进度时的画面预览
     var previewVisible by remember { mutableStateOf(false) }
@@ -416,6 +430,23 @@ fun PlayerScreen(
                             },
                             update = { view ->
                                 view.player = viewModel.player
+                                // 系统字幕样式常带黑色底框会挡画面，统一改成透明底 + 描边文字
+                                view.subtitleView?.apply {
+                                    setStyle(
+                                        CaptionStyleCompat(
+                                            android.graphics.Color.WHITE,
+                                            android.graphics.Color.TRANSPARENT,
+                                            android.graphics.Color.TRANSPARENT,
+                                            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                            android.graphics.Color.BLACK,
+                                            null
+                                        )
+                                    )
+                                    setFixedTextSize(
+                                        TypedValue.COMPLEX_UNIT_SP,
+                                        subtitleTextSizeSp(settings.subtitleSize)
+                                    )
+                                }
                                 // 固定比例（3 起）用拉伸填充，让画面真正变成该比例而不是只加黑边
                                 view.resizeMode = when {
                                     state.aspectMode >= 3 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
