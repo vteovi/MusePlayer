@@ -160,6 +160,8 @@ fun PlayerScreen(
 
     var controlsVisible by remember { mutableStateOf(true) }
     var locked by remember { mutableStateOf(false) }
+    // 锁屏后解锁按钮只短暂显示，点击画面再唤出
+    var lockHintVisible by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     // 按视频分别记住缩放倍数：切走时存下当前值，切到这个视频时恢复它自己的值
     val zoomByVideo = remember { mutableStateMapOf<String, Float>() }
@@ -295,11 +297,11 @@ fun PlayerScreen(
         }
     }
 
-    // 控制栏显示时一并显示状态栏和导航栏（虚拟按键），隐藏控制栏时恢复沉浸式
+    // 控制栏显示时一并显示状态栏和导航栏（虚拟按键），隐藏控制栏或锁屏时恢复沉浸式
     LaunchedEffect(controlsVisible, locked) {
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
             ?: return@LaunchedEffect
-        if (controlsVisible || locked) {
+        if (controlsVisible && !locked) {
             // 黑底上必须用浅色图标，否则系统栏内容会变成黑色导致看不清
             controller.isAppearanceLightStatusBars = false
             controller.isAppearanceLightNavigationBars = false
@@ -320,6 +322,14 @@ fun PlayerScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 锁屏时解锁按钮自动隐藏，触摸画面后重新显示几秒
+    LaunchedEffect(locked, lockHintVisible) {
+        if (locked && lockHintVisible) {
+            delay(2500)
+            lockHintVisible = false
+        }
     }
 
     // 控制栏自动隐藏
@@ -698,7 +708,7 @@ fun PlayerScreen(
         }
 
         // 系统栏纯黑背景：状态栏与手势条/虚拟按键区域不再透出视频画面
-        if (controlsVisible || locked) {
+        if (controlsVisible && !locked) {
             val statusInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             Box(
@@ -898,6 +908,7 @@ fun PlayerScreen(
                         IconButton(onClick = {
                             locked = true
                             controlsVisible = false
+                            lockHintVisible = true
                         }) {
                             Icon(Icons.Rounded.Lock, "锁定屏幕", tint = Color.White)
                         }
@@ -930,25 +941,35 @@ fun PlayerScreen(
             }
         }
 
-        // 锁屏状态
+        // 锁屏状态：画面不可操作，解锁按钮短暂显示
         if (locked) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures(onTap = {}) }
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { lockHintVisible = true })
+                    }
             )
-            IconButton(
-                onClick = {
-                    locked = false
-                    controlsVisible = true
-                },
+            AnimatedVisibility(
+                visible = lockHintVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp)
-                    .size(52.dp)
-                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
             ) {
-                Icon(Icons.Rounded.Lock, "点击解锁", tint = Color.White)
+                IconButton(
+                    onClick = {
+                        locked = false
+                        lockHintVisible = false
+                        controlsVisible = true
+                    },
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(Icons.Rounded.Lock, "点击解锁", tint = Color.White)
+                }
             }
         }
 
