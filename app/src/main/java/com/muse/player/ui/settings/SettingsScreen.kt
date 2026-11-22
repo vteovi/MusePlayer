@@ -142,6 +142,12 @@ fun SettingsScreen(navController: NavController) {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionTitle("导航栏")
             SwitchRow(
+                title = "显示媒体库分栏",
+                subtitle = "本地视频、文件夹与最近播放的入口",
+                checked = "MEDIA" !in settings.hiddenTabs,
+                onCheckedChange = { SettingsRepository.setTabVisible("MEDIA", it) }
+            )
+            SwitchRow(
                 title = "显示历史分栏",
                 subtitle = "关闭后底部 / 侧边导航栏不再出现历史记录",
                 checked = "HISTORY" !in settings.hiddenTabs,
@@ -160,7 +166,7 @@ fun SettingsScreen(navController: NavController) {
                 onCheckedChange = { SettingsRepository.setTabVisible("NETWORK", it) }
             )
             Text(
-                text = "媒体库分栏始终显示",
+                text = "至少保留一个分栏，最后一个开启的分栏无法关闭",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
