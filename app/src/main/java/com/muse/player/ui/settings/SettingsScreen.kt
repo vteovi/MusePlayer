@@ -6,7 +6,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings as AndroidSettings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,12 +17,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,21 +38,28 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.muse.player.BuildConfig
 import com.muse.player.data.SettingsRepository
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -172,32 +181,13 @@ fun SettingsScreen(navController: NavController) {
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp)
             )
-            settings.tabOrder.forEachIndexed { index, key ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = tabTitle(key),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = { SettingsRepository.moveTab(key, -1) },
-                        enabled = index > 0
-                    ) {
-                        Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "上移")
-                    }
-                    IconButton(
-                        onClick = { SettingsRepository.moveTab(key, 1) },
-                        enabled = index < settings.tabOrder.lastIndex
-                    ) {
-                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "下移")
-                    }
-                }
-            }
+            Text(
+                text = "长按分栏上下拖动即可调整顺序",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp)
+            )
+            TabOrderList(settings.tabOrder)
             Text(
                 text = "至少保留一个分栏，最后一个开启的分栏无法关闭",
                 style = MaterialTheme.typography.bodySmall,
@@ -481,6 +471,82 @@ private fun openAllFilesAccess(context: Context) {
         try {
             context.startActivity(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
         } catch (_: Exception) {
+        }
+    }
+}
+
+/**
+ * 长按拖动调整分栏顺序。
+ * 每一项用 key(tabKey) 固定身份，拖动过程中顺序变化不会中断手势。
+ */
+@Composable
+private fun TabOrderList(order: List<String>) {
+    var draggingKey by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val rowHeight = 52.dp
+    val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
+
+    Column {
+        order.forEach { tabKey ->
+            key(tabKey) {
+                val dragging = draggingKey == tabKey
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(rowHeight)
+                        .zIndex(if (dragging) 1f else 0f)
+                        .graphicsLayer {
+                            translationY = if (dragging) dragOffset else 0f
+                        }
+                        .background(
+                            if (dragging) {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            } else {
+                                Color.Transparent
+                            }
+                        )
+                        .pointerInput(tabKey) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggingKey = tabKey
+                                    dragOffset = 0f
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount.y
+                                    val current = SettingsRepository.state.value.tabOrder
+                                    val from = current.indexOf(tabKey)
+                                    if (from != -1) {
+                                        val target = (from + (dragOffset / rowHeightPx).roundToInt())
+                                            .coerceIn(0, current.lastIndex)
+                                        if (target != from) {
+                                            SettingsRepository.moveTabTo(tabKey, target)
+                                            dragOffset -= (target - from) * rowHeightPx
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    draggingKey = null
+                                    dragOffset = 0f
+                                },
+                                onDragCancel = {
+                                    draggingKey = null
+                                    dragOffset = 0f
+                                }
+                            )
+                        }
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Rounded.DragHandle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text(text = tabTitle(tabKey), style = MaterialTheme.typography.bodyLarge)
+                }
+            }
         }
     }
 }

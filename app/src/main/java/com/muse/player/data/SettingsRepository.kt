@@ -200,14 +200,14 @@ object SettingsRepository {
         _state.value = _state.value.copy(hiddenTabs = updated)
     }
 
-    /** 上移 / 下移分栏，offset 为 -1 或 1 */
-    fun moveTab(key: String, offset: Int) {
+    /** 把分栏移动到指定位置，供拖动排序使用 */
+    fun moveTabTo(key: String, to: Int) {
         val order = _state.value.tabOrder.toMutableList()
         val from = order.indexOf(key)
         if (from == -1) return
-        val to = (from + offset).coerceIn(0, order.lastIndex)
-        if (to == from) return
-        order.add(to, order.removeAt(from))
+        val target = to.coerceIn(0, order.lastIndex)
+        if (target == from) return
+        order.add(target, order.removeAt(from))
         sp.edit().putString("tab_order", order.joinToString(",")).apply()
         _state.value = _state.value.copy(tabOrder = order)
     }
