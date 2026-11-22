@@ -26,10 +26,13 @@ fun MuseApp() {
             )
         }
         composable("settings") {
-            SettingsScreen(navController = navController)
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenAbout = { navController.navigate("about") }
+            )
         }
         composable("about") {
-            AboutScreen(navController = navController)
+            AboutScreen(onBack = { navController.popBackStack() })
         }
     }
 }

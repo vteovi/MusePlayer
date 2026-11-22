@@ -58,14 +58,16 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
 import com.muse.player.BuildConfig
 import com.muse.player.data.SettingsRepository
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(navController: NavController) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onOpenAbout: () -> Unit
+) {
     val settings by SettingsRepository.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -89,7 +91,7 @@ fun SettingsScreen(navController: NavController) {
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.Rounded.ArrowBack, contentDescription = "返回")
                     }
                 },
@@ -254,7 +256,7 @@ fun SettingsScreen(navController: NavController) {
             ActionRow(
                 title = "关于 Muse Player",
                 subtitle = "版本 ${BuildConfig.VERSION_NAME} · 开源许可与项目信息",
-                onClick = { navController.navigate("about") }
+                onClick = onOpenAbout
             )
             Spacer(Modifier.height(24.dp))
         }

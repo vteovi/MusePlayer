@@ -15,16 +15,25 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import com.muse.player.data.PlayEntry
 import com.muse.player.data.SettingsRepository
 import com.muse.player.playback.PlaybackService
+import com.muse.player.ui.about.AboutScreen
+import com.muse.player.ui.settings.SettingsScreen
 import com.muse.player.ui.theme.MuseTheme
 import com.muse.player.util.NetworkTitles
 
@@ -68,16 +77,33 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             MuseTheme(darkTheme = true) {
                 val state by viewModel.state.collectAsStateWithLifecycle()
-                PlayerScreen(
-                    viewModel = viewModel,
-                    state = state,
-                    // 注意：不能再调用 onBackPressedDispatcher.onBackPressed()，
-                    // 否则会与 PlayerScreen 内的 BackHandler 形成无限递归
-                    onBack = {
-                        viewModel.pauseAndSave()
-                        finish()
+                // 0 播放页, 1 设置, 2 关于。设置从播放页覆盖打开，播放页保持存活
+                var overlay by rememberSaveable { mutableIntStateOf(0) }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    PlayerScreen(
+                        viewModel = viewModel,
+                        state = state,
+                        // 注意：不能再调用 onBackPressedDispatcher.onBackPressed()，
+                        // 否则会与 PlayerScreen 内的 BackHandler 形成无限递归
+                        onBack = {
+                            viewModel.pauseAndSave()
+                            finish()
+                        },
+                        onOpenSettings = { overlay = 1 },
+                        backHandlerEnabled = overlay == 0
+                    )
+                    when (overlay) {
+                        1 -> SettingsScreen(
+                            onBack = { overlay = 0 },
+                            onOpenAbout = { overlay = 2 }
+                        )
+
+                        2 -> AboutScreen(onBack = { overlay = 1 })
                     }
-                )
+                    BackHandler(enabled = overlay != 0) {
+                        overlay = if (overlay == 2) 1 else 0
+                    }
+                }
             }
         }
 

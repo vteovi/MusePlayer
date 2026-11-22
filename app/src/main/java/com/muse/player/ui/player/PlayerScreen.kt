@@ -68,6 +68,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.Settings as SettingsIcon
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -163,7 +164,10 @@ private fun subtitleTextSizeSp(size: Int): Float = when (size) {
 fun PlayerScreen(
     viewModel: PlayerViewModel,
     state: PlayerUiState,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenSettings: () -> Unit,
+    // 设置页覆盖在播放页之上时，播放页不响应返回键
+    backHandlerEnabled: Boolean = true
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -282,7 +286,7 @@ fun PlayerScreen(
         }
     }
 
-    BackHandler {
+    BackHandler(enabled = backHandlerEnabled) {
         if (locked) {
             locked = false
             controlsVisible = true
@@ -312,9 +316,16 @@ fun PlayerScreen(
     }
 
     // 控制栏显示时一并显示状态栏和导航栏（虚拟按键），隐藏控制栏或锁屏时恢复沉浸式
-    LaunchedEffect(controlsVisible, locked) {
+    LaunchedEffect(controlsVisible, locked, backHandlerEnabled) {
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
             ?: return@LaunchedEffect
+        if (!backHandlerEnabled) {
+            // 设置页覆盖在播放器之上时保持系统栏可见，避免其顶栏被状态栏遮挡
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+            controller.show(WindowInsetsCompat.Type.systemBars())
+            return@LaunchedEffect
+        }
         if (controlsVisible && !locked) {
             // 黑底上必须用浅色图标，否则系统栏内容会变成黑色导致看不清
             controller.isAppearanceLightStatusBars = false
@@ -810,6 +821,9 @@ fun PlayerScreen(
                     }
                     IconButton(onClick = cycleOrientation) {
                         Icon(Icons.Rounded.ScreenRotation, "屏幕方向", tint = Color.White)
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Rounded.SettingsIcon, "设置", tint = Color.White)
                     }
                 }
 

@@ -51,7 +51,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
 import com.muse.player.BuildConfig
 
 private const val PROJECT_URL = "https://github.com/vteovi/MusePlayer"
@@ -60,7 +59,7 @@ private const val RELEASES_URL = "$PROJECT_URL/releases"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(navController: NavController) {
+fun AboutScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var showLicenses by remember { mutableStateOf(false) }
 
@@ -72,7 +71,7 @@ fun AboutScreen(navController: NavController) {
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.Rounded.ArrowBack, contentDescription = "返回")
                     }
                 },
