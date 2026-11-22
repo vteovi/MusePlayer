@@ -417,6 +417,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         usingVlc = true
         vlc.play(url, position, speed)
         applyVlcAspect(_state.value.aspectMode)
+        loadVlcSubtitles(entry)
         _state.update {
             it.copy(
                 engine = 1,
@@ -443,6 +444,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val url = vlcUrl(entry) ?: return
         vlc.play(url, 0L, _state.value.speed)
         applyVlcAspect(_state.value.aspectMode)
+        loadVlcSubtitles(entry)
         _state.update {
             it.copy(
                 itemIndex = index,
@@ -457,14 +459,44 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** 兼容引擎不读 Media3 的字幕配置，改为播放后手动挂载同名字幕 */
+    private fun loadVlcSubtitles(entry: PlayEntry) {
+        if (!SettingsRepository.state.value.autoSubtitles) return
+        val uri = entry.uri
+        viewModelScope.launch {
+            val urls = withContext(Dispatchers.IO) {
+                val paths = LinkedHashSet<String>()
+                if (entry.isNetwork) {
+                    paths += SubtitleFinder.findForRemote(uri)
+                } else {
+                    paths += SubtitleFinder.findFor(entry.path)
+                    paths += entry.subtitleFiles
+                }
+                paths.mapNotNull { path ->
+                    runCatching { vlcSubtitleUrl(path) }.getOrNull()
+                }
+            }
+            // 期间可能已经切到别的视频，避免给新视频挂错字幕
+            if (!usingVlc || _state.value.currentUri != uri) return@launch
+            urls.forEach { vlc.addSubtitle(it) }
+        }
+    }
+
+    /** 字幕地址转换：本地转 file://，远程复用带凭据的协议地址 */
+    private fun vlcSubtitleUrl(path: String): String? = when {
+        path.startsWith("muse+") -> vlcUrl(path, null)
+        path.startsWith("content://") -> path
+        else -> File(path).takeIf { it.exists() }?.let { Uri.fromFile(it).toString() }
+    }
+
     /** 内部协议地址转成 libVLC 可直接打开的地址（SMB/FTP 需要把凭据放进 URL） */
-    private fun vlcUrl(entry: PlayEntry): String? {
-        val raw = entry.uri
+    private fun vlcUrl(entry: PlayEntry): String? = vlcUrl(entry.uri, entry.path)
+
+    private fun vlcUrl(raw: String, localPath: String?): String? {
         // MediaStore 的 content:// 交给 libVLC 不稳定，本地文件优先用真实路径
         if (raw.startsWith("content://")) {
-            val path = entry.path
-            if (path != null && File(path).exists()) {
-                return Uri.fromFile(File(path)).toString()
+            if (localPath != null && File(localPath).exists()) {
+                return Uri.fromFile(File(localPath)).toString()
             }
             return raw
         }
@@ -932,6 +964,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val url = vlcUrl(entry) ?: return
             _state.update { it.copy(error = null, isBuffering = true) }
             vlc.play(url, _state.value.positionMs, _state.value.speed)
+            loadVlcSubtitles(entry)
             return
         }
         val controller = player ?: return

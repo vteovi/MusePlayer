@@ -5,6 +5,7 @@ import android.net.Uri
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.interfaces.IMedia
 import org.videolan.libvlc.util.VLCVideoLayout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,6 +80,12 @@ class VlcEngine(context: Context) {
         videoLayout?.let { player.attachViews(it, null, true, false) }
         player.play()
         _state.value = VlcState(buffering = true)
+    }
+
+    /** 播放中追加字幕（远程字幕等），select = true 自动选中 */
+    fun addSubtitle(url: String) {
+        val player = mediaPlayer ?: return
+        runCatching { player.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(url), true) }
     }
 
     fun toggle() {

@@ -33,6 +33,8 @@ class VlcEngine(context: Context) {
 
     fun play(url: String, startMs: Long, speed: Float) = Unit
 
+    fun addSubtitle(url: String) = Unit
+
     fun toggle() = Unit
 
     fun pause() = Unit
