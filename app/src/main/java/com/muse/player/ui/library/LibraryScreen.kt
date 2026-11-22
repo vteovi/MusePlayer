@@ -137,6 +137,7 @@ fun LibraryScreen(
     networkViewModel: NetworkViewModel
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val appSettings by SettingsRepository.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -194,7 +195,12 @@ fun LibraryScreen(
                 )
             },
             onOpenSettings = { openAppSettings(context) },
-            onBrowseNetwork = { viewModel.setTab(3) }
+            // 网络分栏被隐藏时不显示入口
+            onBrowseNetwork = if ("NETWORK" in appSettings.hiddenTabs) {
+                null
+            } else {
+                { viewModel.setTab(3) }
+            }
         )
         return
     }
@@ -211,13 +217,17 @@ fun LibraryScreen(
         PlayerLauncher.open(context, entries, index, resume)
     }
 
-    val tabs = remember {
+    val allTabs = remember {
         listOf(
-            LibraryTab("媒体库", Icons.Rounded.VideoLibrary),
-            LibraryTab("历史", Icons.Rounded.History),
-            LibraryTab("浏览", Icons.Rounded.FolderOpen),
-            LibraryTab("网络", Icons.Rounded.Dns)
+            LibraryTab(0, "MEDIA", "媒体库", Icons.Rounded.VideoLibrary),
+            LibraryTab(1, "HISTORY", "历史", Icons.Rounded.History),
+            LibraryTab(2, "BROWSE", "浏览", Icons.Rounded.FolderOpen),
+            LibraryTab(3, "NETWORK", "网络", Icons.Rounded.Dns)
         )
+    }
+    // 历史/浏览/网络可以在设置里隐藏，媒体库始终保留
+    val tabs = remember(appSettings.hiddenTabs) {
+        allTabs.filter { it.key == "MEDIA" || it.key !in appSettings.hiddenTabs }
     }
     // 媒体库视图模式：0 = 视频，1 = 文件夹（持久化，下次打开保持上次选择）
     var mediaMode by rememberSaveable {
@@ -232,14 +242,28 @@ fun LibraryScreen(
     }
 
     val wide = LocalConfiguration.current.screenWidthDp >= 600
-    val pagerState = rememberPagerState(initialPage = state.tab) { tabs.size }
+    // 分栏可能被隐藏，逻辑页码与可见页码需要互相换算
+    val initialPage = remember { tabs.indexOfFirst { it.index == state.tab }.coerceAtLeast(0) }
+    val pagerState = rememberPagerState(initialPage = initialPage) { tabs.size }
 
     val scope = rememberCoroutineScope()
 
     // 页码停稳后再同步 tab：滑动过程中写回状态会让整页重组，手势会掉帧
-    LaunchedEffect(pagerState) {
+    LaunchedEffect(pagerState, tabs) {
         snapshotFlow { pagerState.settledPage }.collect { page ->
-            if (page != viewModel.state.value.tab) viewModel.setTab(page)
+            val logical = tabs.getOrNull(page)?.index ?: return@collect
+            if (logical != viewModel.state.value.tab) viewModel.setTab(logical)
+        }
+    }
+
+    // 设置中隐藏了当前分栏时，切回第一个可见分栏
+    LaunchedEffect(tabs) {
+        val target = tabs.indexOfFirst { it.index == viewModel.state.value.tab }
+        if (target == -1) {
+            viewModel.setTab(tabs.first().index)
+            pagerState.scrollToPage(0)
+        } else if (target != pagerState.currentPage) {
+            pagerState.scrollToPage(target)
         }
     }
 
@@ -398,9 +422,9 @@ fun LibraryScreen(
                 LibraryBottomBar(
                     pagerState = pagerState,
                     tabs = tabs,
-                    onSelect = { index ->
-                        viewModel.setTab(index)
-                        scope.launch { pagerState.animateScrollToPage(index) }
+                    onSelect = { page ->
+                        tabs.getOrNull(page)?.let { viewModel.setTab(it.index) }
+                        scope.launch { pagerState.animateScrollToPage(page) }
                     }
                 )
             }
@@ -416,9 +440,9 @@ fun LibraryScreen(
                 LibraryNavRail(
                     pagerState = pagerState,
                     tabs = tabs,
-                    onSelect = { index ->
-                        viewModel.setTab(index)
-                        scope.launch { pagerState.animateScrollToPage(index) }
+                    onSelect = { page ->
+                        tabs.getOrNull(page)?.let { viewModel.setTab(it.index) }
+                        scope.launch { pagerState.animateScrollToPage(page) }
                     },
                     onSettings = { navController.navigate("settings") }
                 )
@@ -457,7 +481,7 @@ fun LibraryScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                when (page) {
+                when (tabs.getOrNull(page)?.index ?: 0) {
                 0 -> {
                     val openFolder = openFolderId
                     if (mediaMode == 1 && openFolder != null) {
@@ -913,7 +937,12 @@ private fun InfoLine(label: String, value: String) {
     }
 }
 
-private data class LibraryTab(val title: String, val icon: ImageVector)
+private data class LibraryTab(
+    val index: Int,
+    val key: String,
+    val title: String,
+    val icon: ImageVector
+)
 
 /**
  * 宽屏左侧导航栏。翻页进度只在这个组件内部读取，

@@ -27,7 +27,8 @@ data class AppSettings(
     val decoderMode: Int = 0, // 0 自动（硬解优先+软解回退）, 1 强制软件解码, 2 强制硬件解码
     val repeatMode: Int = 0, // 0 顺序播放, 1 单曲循环, 2 列表循环
     val shuffleEnabled: Boolean = false, // 随机播放
-    val lowPerformanceMode: Boolean = false // 低性能模式：不加载视频缩略图
+    val lowPerformanceMode: Boolean = false, // 低性能模式：不加载视频缩略图
+    val hiddenTabs: Set<String> = emptySet() // 导航栏中隐藏的分栏（HISTORY / BROWSE / NETWORK）
 )
 
 object SettingsRepository {
@@ -60,7 +61,8 @@ object SettingsRepository {
             decoderMode = sp.getInt("decoder_mode", 0),
             repeatMode = sp.getInt("repeat_mode", 0),
             shuffleEnabled = sp.getBoolean("shuffle_enabled", false),
-            lowPerformanceMode = sp.getBoolean("low_performance_mode", false)
+            lowPerformanceMode = sp.getBoolean("low_performance_mode", false),
+            hiddenTabs = sp.getStringSet("hidden_tabs", emptySet())?.toSet() ?: emptySet()
         )
     }
 
@@ -176,5 +178,14 @@ object SettingsRepository {
     fun setLowPerformanceMode(value: Boolean) {
         sp.edit().putBoolean("low_performance_mode", value).apply()
         _state.value = _state.value.copy(lowPerformanceMode = value)
+    }
+
+    /** 控制导航栏分栏的显示与隐藏，key 为 HISTORY / BROWSE / NETWORK */
+    fun setTabVisible(key: String, visible: Boolean) {
+        val current = _state.value.hiddenTabs
+        val updated = if (visible) current - key else current + key
+        if (updated == current) return
+        sp.edit().putStringSet("hidden_tabs", updated).apply()
+        _state.value = _state.value.copy(hiddenTabs = updated)
     }
 }

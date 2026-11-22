@@ -140,6 +140,33 @@ fun SettingsScreen(navController: NavController) {
             )
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionTitle("导航栏")
+            SwitchRow(
+                title = "显示历史分栏",
+                subtitle = "关闭后底部 / 侧边导航栏不再出现历史记录",
+                checked = "HISTORY" !in settings.hiddenTabs,
+                onCheckedChange = { SettingsRepository.setTabVisible("HISTORY", it) }
+            )
+            SwitchRow(
+                title = "显示浏览分栏",
+                subtitle = "关闭后不再显示系统文件夹浏览入口",
+                checked = "BROWSE" !in settings.hiddenTabs,
+                onCheckedChange = { SettingsRepository.setTabVisible("BROWSE", it) }
+            )
+            SwitchRow(
+                title = "显示网络分栏",
+                subtitle = "局域网 SMB / FTP / WebDAV 与流媒体地址入口",
+                checked = "NETWORK" !in settings.hiddenTabs,
+                onCheckedChange = { SettingsRepository.setTabVisible("NETWORK", it) }
+            )
+            Text(
+                text = "媒体库分栏始终显示",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionTitle("播放")
             SwitchRow(
                 title = "自动续播",
