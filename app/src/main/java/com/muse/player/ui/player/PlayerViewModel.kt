@@ -211,7 +211,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun buildMediaItem(entry: PlayEntry, probeMime: Boolean = false): MediaItem {
+    private suspend fun buildMediaItem(entry: PlayEntry, probeMime: Boolean = false): MediaItem {
         val metadata = MediaMetadata.Builder().setArtist("Muse Player")
         // 网络视频的标题若只是占位（通用文件名或域名），不写死标题，
         // 让播放器读取流内的元数据（如 ID3 标题）来展示真实名称
@@ -228,12 +228,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val subtitlePaths = LinkedHashSet<String>()
-        if (!entry.isNetwork && SettingsRepository.state.value.autoSubtitles) {
-            subtitlePaths += SubtitleFinder.findFor(entry.path)
+        if (SettingsRepository.state.value.autoSubtitles) {
+            if (entry.isNetwork) {
+                // 远程视频：找同目录同名字幕，地址走同一套 muse+ 数据源加载
+                subtitlePaths += SubtitleFinder.findForRemote(entry.uri)
+            } else {
+                subtitlePaths += SubtitleFinder.findFor(entry.path)
+            }
         }
         subtitlePaths += entry.subtitleFiles
 
-        val configs = subtitlePaths.mapNotNull { subtitleConfig(it) }
+        val configs = subtitlePaths.mapNotNull { path ->
+            if (path.startsWith("muse+")) remoteSubtitleConfig(path) else subtitleConfig(path)
+        }
         if (configs.isNotEmpty()) {
             builder.setSubtitleConfigurations(configs)
         }
@@ -243,18 +250,30 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun subtitleConfig(path: String): MediaItem.SubtitleConfiguration? {
         val file = File(path)
         if (!file.exists()) return null
-        val mime = when (file.extension.lowercase()) {
-            "srt" -> MimeTypes.APPLICATION_SUBRIP
-            "ass", "ssa" -> MimeTypes.TEXT_SSA
-            "vtt" -> MimeTypes.TEXT_VTT
-            "ttml", "dfxp" -> MimeTypes.APPLICATION_TTML
-            else -> return null
-        }
+        val mime = subtitleMimeType(file.name) ?: return null
         return MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
             .setMimeType(mime)
             .setLabel(file.name)
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
             .build()
+    }
+
+    /** 远程字幕：不检查本地文件，地址由 MuseDataSource 解析 */
+    private fun remoteSubtitleConfig(uri: String): MediaItem.SubtitleConfiguration? {
+        val mime = subtitleMimeType(uri.substringBefore('?')) ?: return null
+        return MediaItem.SubtitleConfiguration.Builder(Uri.parse(uri))
+            .setMimeType(mime)
+            .setLabel(uri.substringAfterLast('/').ifBlank { "字幕" })
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+    }
+
+    private fun subtitleMimeType(name: String): String? = when (name.substringAfterLast('.', "").lowercase()) {
+        "srt" -> MimeTypes.APPLICATION_SUBRIP
+        "ass", "ssa" -> MimeTypes.TEXT_SSA
+        "vtt" -> MimeTypes.TEXT_VTT
+        "ttml", "dfxp" -> MimeTypes.APPLICATION_TTML
+        else -> null
     }
 
     private fun inferMimeType(url: String): String? {
