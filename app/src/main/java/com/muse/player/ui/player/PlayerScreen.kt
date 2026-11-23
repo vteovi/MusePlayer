@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -141,6 +142,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private enum class GestureType { BRIGHTNESS, VOLUME, SEEK, INFO }
 
@@ -486,17 +488,60 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
-                        // 双指缩放
+                        // 双指缩放 / 双指上下滑调速
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
+                            var mode = 0 // 1 缩放, 2 调速
+                            var startSpeed = 1f
+                            var accDy = 0f
+                            var accZoom = 1f
+                            var hasCentroid = false
+                            var lastCentroidY = 0f
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
-                                    val zoomChange = event.calculateZoom()
-                                    if (zoomChange != 1f) {
-                                        zoom = (zoom * zoomChange).coerceIn(1f, 3f)
-                                        event.changes.forEach { it.consume() }
+                                    val centroid = event.calculateCentroid()
+                                    if (!hasCentroid) {
+                                        hasCentroid = true
+                                        lastCentroidY = centroid.y
+                                        startSpeed = viewModel.state.value.speed
+                                        continue
                                     }
+                                    val dy = centroid.y - lastCentroidY
+                                    lastCentroidY = centroid.y
+                                    val zoomChange = event.calculateZoom()
+                                    accDy += dy
+                                    accZoom *= zoomChange
+                                    if (mode == 0) {
+                                        mode = when {
+                                            abs(accZoom - 1f) > 0.08f -> 1
+                                            abs(accDy) > 12f -> 2
+                                            else -> 0
+                                        }
+                                    }
+                                    when (mode) {
+                                        1 -> if (zoomChange != 1f) {
+                                            zoom = (zoom * zoomChange).coerceIn(1f, 3f)
+                                        }
+
+                                        2 -> {
+                                            // 向上滑加速、向下滑减速，滑动约 1/3 屏高变化 1x
+                                            val raw = startSpeed - accDy / size.height * 3f
+                                            val speed = ((raw * 20f).roundToInt() / 20f)
+                                                .coerceIn(0.5f, 3f)
+                                            if (speed != viewModel.state.value.speed) {
+                                                viewModel.setSpeed(speed)
+                                                gestureHint = GestureHint(
+                                                    GestureType.INFO,
+                                                    "${formatSpeed(speed)} 倍速"
+                                                )
+                                            }
+                                        }
+                                    }
+                                    event.changes.forEach { it.consume() }
+                                } else {
+                                    // 手指数变化后重新取基准点，避免位置跳变
+                                    hasCentroid = false
                                 }
                             } while (event.changes.any { it.pressed })
                         }
