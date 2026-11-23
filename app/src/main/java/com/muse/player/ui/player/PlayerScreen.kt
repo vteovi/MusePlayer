@@ -1257,8 +1257,9 @@ fun PlayerScreen(
 
     // 自定义画面比例
     if (showCustomRatioDialog) {
-        var widthText by remember { mutableStateOf(settings.customAspectWidth.toString()) }
-        var heightText by remember { mutableStateOf(settings.customAspectHeight.toString()) }
+        // 默认留空，由用户按需输入，不预填上次的比例
+        var widthText by remember { mutableStateOf("") }
+        var heightText by remember { mutableStateOf("") }
         val valid = widthText.toIntOrNull()?.let { it in 1..999 } == true &&
             heightText.toIntOrNull()?.let { it in 1..999 } == true
         AlertDialog(
