@@ -501,65 +501,58 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
-                        // 双指缩放 / 双指上下滑调速
+                        // 双指手势：上下移动调速，左右张开捏合缩放
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
-                            var mode = 0 // 1 缩放, 2 调速
+                            var mode = 0 // 0 未定, 1 缩放, 2 调速
                             var startSpeed = 1f
                             var accDy = 0f
-                            var hasCentroid = false
+                            var hasBase = false
                             var lastCentroidY = 0f
-                            var lastSpread = 0f
-                            // 分别累积"两指间距变化"（缩放）和"两指同向上下移动"（调速）的证据，
-                            // 谁的证据先成立就用谁，避免开头的小抖动误判
-                            var zoomEvidence = 0f
-                            var panEvidence = 0f
+                            var startSpread = 0f
+                            // 累计两指横向/纵向移动量，用移动方向区分手势：
+                            // 上下滑是纵向为主，捏合缩放通常是横向张开
+                            var accDxPx = 0f
+                            var accDyPx = 0f
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
                                     lastMultiTouchAt[0] = android.os.SystemClock.uptimeMillis()
                                     val centroid = event.calculateCentroid()
                                     val spread = event.calculateCentroidSize()
-                                    if (!hasCentroid) {
-                                        hasCentroid = true
+                                    if (!hasBase) {
+                                        hasBase = true
                                         lastCentroidY = centroid.y
-                                        lastSpread = spread
+                                        startSpread = spread
                                         accDy = 0f
-                                        zoomEvidence = 0f
-                                        panEvidence = 0f
+                                        accDxPx = 0f
+                                        accDyPx = 0f
                                         startSpeed = viewModel.state.value.speed
                                         continue
                                     }
-                                    val dy = centroid.y - lastCentroidY
+                                    accDy += centroid.y - lastCentroidY
                                     lastCentroidY = centroid.y
-                                    val spreadPx = abs(spread - lastSpread)
-                                    lastSpread = spread
-                                    val zoomChange = event.calculateZoom()
-                                    accDy += dy
-                                    // 缩放：两指间距在变
-                                    zoomEvidence += spreadPx
-                                    // 调速：两根手指同方向上下移动（捏合时两指方向相反，不计入）
-                                    val fingerDys = event.changes
-                                        .filter { it.pressed }
-                                        .map { it.position.y - it.previousPosition.y }
-                                    if (fingerDys.size >= 2) {
-                                        val sameDown = fingerDys.all { it >= 1f }
-                                        val sameUp = fingerDys.all { it <= -1f }
-                                        if (sameDown || sameUp) {
-                                            panEvidence += fingerDys.sumOf { abs(it).toDouble() }.toFloat() / 2f
-                                        }
+                                    event.changes.filter { it.pressed }.forEach { change ->
+                                        accDxPx += abs(change.position.x - change.previousPosition.x)
+                                        accDyPx += abs(change.position.y - change.previousPosition.y)
                                     }
                                     if (mode == 0) {
-                                        // 优先判调速：左右捏合时两指上下方向相反，不会命中这条
                                         mode = when {
-                                            panEvidence >= 30f && panEvidence >= zoomEvidence -> 2
-                                            zoomEvidence >= 30f && zoomEvidence >= panEvidence * 1.5f -> 1
+                                            // 两指整体以纵向移动为主 → 调速
+                                            accDyPx >= 30f && accDyPx > accDxPx * 1.3f -> 2
+                                            // 两指横向张开/收拢为主 → 缩放
+                                            accDxPx >= 30f && accDxPx > accDyPx * 1.3f -> 1
+                                            // 斜向捏合：间距变化明显 → 缩放
+                                            abs(spread - startSpread) >= 40f -> 1
                                             else -> 0
                                         }
                                     }
                                     when (mode) {
-                                        1 -> if (zoomChange != 1f) {
-                                            zoom = (zoom * zoomChange).coerceIn(1f, 3f)
+                                        1 -> {
+                                            val zoomChange = event.calculateZoom()
+                                            if (zoomChange != 1f) {
+                                                zoom = (zoom * zoomChange).coerceIn(1f, 3f)
+                                            }
                                         }
 
                                         2 -> {
@@ -580,7 +573,7 @@ fun PlayerScreen(
                                     event.changes.forEach { it.consume() }
                                 } else {
                                     // 手指数变化后重新取基准点，避免位置跳变
-                                    hasCentroid = false
+                                    hasBase = false
                                 }
                             } while (event.changes.any { it.pressed })
                         }
