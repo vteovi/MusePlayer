@@ -117,7 +117,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -1386,6 +1385,10 @@ private fun SubtitleSizeOptions() {
 /** 字幕时间点微调：正数让字幕更晚出现，负数更早 */
 @Composable
 private fun SubtitleDelayOptions(delayMs: Long, onDelayChange: (Long) -> Unit) {
+    // 拖动时只更新滑块的临时值，松手后再应用（Media3 应用偏移需要重新定位解码）
+    var sliderSeconds by remember(delayMs) { mutableFloatStateOf(delayMs / 1000f) }
+    val previewMs = (sliderSeconds * 1000f).roundToInt().toLong()
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1397,51 +1400,28 @@ private fun SubtitleDelayOptions(delayMs: Long, onDelayChange: (Long) -> Unit) {
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f)
             )
+            Text(
+                text = formatSubtitleDelay(previewMs),
+                style = MaterialTheme.typography.titleSmall
+            )
             if (delayMs != 0L) {
                 TextButton(onClick = { onDelayChange(0L) }) {
                     Text("重置")
                 }
             }
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DelayStepChip("−0.5s") { onDelayChange(delayMs - 500L) }
-            DelayStepChip("−0.1s") { onDelayChange(delayMs - 100L) }
-            Text(
-                text = formatSubtitleDelay(delayMs),
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.titleSmall
-            )
-            DelayStepChip("+0.1s") { onDelayChange(delayMs + 100L) }
-            DelayStepChip("+0.5s") { onDelayChange(delayMs + 500L) }
-        }
-        Text(
-            text = "字幕偏早选正数，偏晚选负数",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp)
+        Slider(
+            value = sliderSeconds,
+            onValueChange = { sliderSeconds = (it * 10f).roundToInt() / 10f },
+            onValueChangeFinished = {
+                onDelayChange((sliderSeconds * 1000f).roundToInt().toLong())
+            },
+            valueRange = -10f..10f
         )
-    }
-}
-
-@Composable
-private fun DelayStepChip(label: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-    ) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            text = "左右拖动调节，松手生效；字幕偏早选正数，偏晚选负数",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
