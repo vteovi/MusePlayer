@@ -510,10 +510,10 @@ fun PlayerScreen(
                             var hasCentroid = false
                             var lastCentroidY = 0f
                             var lastSpread = 0f
-                            // 逐帧给缩放/调速"投票"：只有某一方持续占优才锁定，
-                            // 避免开头一两帧的抖动把整次手势误判成缩放
-                            var zoomScore = 0f
-                            var panScore = 0f
+                            // 分别累积"两指间距变化"（缩放）和"两指同向上下移动"（调速）的证据，
+                            // 谁的证据先成立就用谁，避免开头的小抖动误判
+                            var zoomEvidence = 0f
+                            var panEvidence = 0f
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
@@ -525,8 +525,8 @@ fun PlayerScreen(
                                         lastCentroidY = centroid.y
                                         lastSpread = spread
                                         accDy = 0f
-                                        zoomScore = 0f
-                                        panScore = 0f
+                                        zoomEvidence = 0f
+                                        panEvidence = 0f
                                         startSpeed = viewModel.state.value.speed
                                         continue
                                     }
@@ -536,24 +536,24 @@ fun PlayerScreen(
                                     lastSpread = spread
                                     val zoomChange = event.calculateZoom()
                                     accDy += dy
-                                    // 缩放看两指间距变化，调速看整体上下位移；
-                                    // 每帧谁明显更大就给谁加分，两者相近则都不加分
-                                    val dyPx = abs(dy)
-                                    // 两指同向上下移动是"双指滑动"的强信号，即使间距略有变化也算调速证据
+                                    // 缩放：两指间距在变
+                                    zoomEvidence += spreadPx
+                                    // 调速：两根手指同方向上下移动（捏合时两指方向相反，不计入）
                                     val fingerDys = event.changes
                                         .filter { it.pressed }
                                         .map { it.position.y - it.previousPosition.y }
-                                    val parallelPan = fingerDys.count { it > 0.5f } >= 2 ||
-                                        fingerDys.count { it < -0.5f } >= 2
-                                    when {
-                                        spreadPx > dyPx * 1.3f -> zoomScore += spreadPx
-                                        dyPx > spreadPx * 1.3f -> panScore += dyPx
-                                        parallelPan -> panScore += dyPx * 0.8f
+                                    if (fingerDys.size >= 2) {
+                                        val sameDown = fingerDys.all { it >= 1f }
+                                        val sameUp = fingerDys.all { it <= -1f }
+                                        if (sameDown || sameUp) {
+                                            panEvidence += fingerDys.sumOf { abs(it).toDouble() }.toFloat() / 2f
+                                        }
                                     }
                                     if (mode == 0) {
+                                        // 优先判调速：左右捏合时两指上下方向相反，不会命中这条
                                         mode = when {
-                                            zoomScore >= 24f && zoomScore > panScore -> 1
-                                            panScore >= 36f && panScore > zoomScore -> 2
+                                            panEvidence >= 30f && panEvidence >= zoomEvidence -> 2
+                                            zoomEvidence >= 30f && zoomEvidence >= panEvidence * 1.5f -> 1
                                             else -> 0
                                         }
                                     }
