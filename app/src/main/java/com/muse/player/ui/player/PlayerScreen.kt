@@ -23,6 +23,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -506,17 +507,20 @@ fun PlayerScreen(
                             var mode = 0 // 1 缩放, 2 调速
                             var startSpeed = 1f
                             var accDy = 0f
-                            var accZoom = 1f
                             var hasCentroid = false
                             var lastCentroidY = 0f
+                            var startSpread = 0f
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
                                     lastMultiTouchAt[0] = android.os.SystemClock.uptimeMillis()
                                     val centroid = event.calculateCentroid()
+                                    val spread = event.calculateCentroidSize()
                                     if (!hasCentroid) {
                                         hasCentroid = true
                                         lastCentroidY = centroid.y
+                                        startSpread = spread
+                                        accDy = 0f
                                         startSpeed = viewModel.state.value.speed
                                         continue
                                     }
@@ -524,15 +528,14 @@ fun PlayerScreen(
                                     lastCentroidY = centroid.y
                                     val zoomChange = event.calculateZoom()
                                     accDy += dy
-                                    accZoom *= zoomChange
+                                    val spreadDelta = abs(spread - startSpread)
                                     if (mode == 0) {
-                                        // 缩放与滑动同时存在时按变化幅度判定意图，
-                                        // 缩放为主判缩放，上下位移为主判调速，避免互相误触
-                                        val zoomAmount = abs(accZoom - 1f)
-                                        val dyAmount = abs(accDy) / size.height * 3f
+                                        // 两指间距变化 vs 整体上下位移：谁占主导就是谁的手势。
+                                        // 缩放时间距变化明显，调速时两指近乎平行移动、间距基本不变。
+                                        // 两边都要求领先 1.5 倍，避免手势开头的小抖动提前锁错意图。
                                         mode = when {
-                                            zoomAmount >= 0.04f && zoomAmount >= dyAmount -> 1
-                                            abs(accDy) >= 32f && dyAmount > zoomAmount -> 2
+                                            spreadDelta >= 24f && spreadDelta >= abs(accDy) * 1.5f -> 1
+                                            abs(accDy) >= 48f && abs(accDy) >= spreadDelta * 1.5f -> 2
                                             else -> 0
                                         }
                                     }
