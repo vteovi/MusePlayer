@@ -488,6 +488,14 @@ fun PlayerScreen(
 
         // 手势层
         if (!locked) {
+            // 记录最近一次双指操作的时间：双指手势结束后的一小段时间内仍让单指手势让路，
+            // 避免双指缩放时误触发亮度/音量/进度/长按倍速
+            val lastMultiTouchAt = remember { longArrayOf(0L) }
+            fun multiTouchHeld(): Boolean {
+                val t = lastMultiTouchAt[0]
+                return t != 0L &&
+                    android.os.SystemClock.uptimeMillis() - t < 250L
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -504,6 +512,7 @@ fun PlayerScreen(
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
+                                    lastMultiTouchAt[0] = android.os.SystemClock.uptimeMillis()
                                     val centroid = event.calculateCentroid()
                                     if (!hasCentroid) {
                                         hasCentroid = true
@@ -517,9 +526,13 @@ fun PlayerScreen(
                                     accDy += dy
                                     accZoom *= zoomChange
                                     if (mode == 0) {
+                                        // 缩放与滑动同时存在时按变化幅度判定意图，
+                                        // 缩放为主判缩放，上下位移为主判调速，避免互相误触
+                                        val zoomAmount = abs(accZoom - 1f)
+                                        val dyAmount = abs(accDy) / size.height * 3f
                                         mode = when {
-                                            abs(accZoom - 1f) > 0.08f -> 1
-                                            abs(accDy) > 12f -> 2
+                                            zoomAmount >= 0.04f && zoomAmount >= dyAmount -> 1
+                                            abs(accDy) >= 32f && dyAmount > zoomAmount -> 2
                                             else -> 0
                                         }
                                     }
@@ -542,6 +555,7 @@ fun PlayerScreen(
                                             }
                                         }
                                     }
+                                    // 双指期间消费事件，单指拖动/长按不会再响应
                                     event.changes.forEach { it.consume() }
                                 } else {
                                     // 手指数变化后重新取基准点，避免位置跳变
@@ -580,7 +594,8 @@ fun PlayerScreen(
                                 }
                             },
                             onLongPress = {
-                                if (!boosting) {
+                                // 双指操作（缩放/调速）期间不触发长按倍速
+                                if (!boosting && !multiTouchHeld()) {
                                     preSpeed = viewModel.state.value.speed
                                     boosting = true
                                     // 倍率可在设置中调整，最低 2x
@@ -637,6 +652,10 @@ fun PlayerScreen(
 
                         detectDragGestures(
                             onDragStart = { offset ->
+                                if (multiTouchHeld()) {
+                                    dragMode = -1
+                                    return@detectDragGestures
+                                }
                                 dragMode = 0
                                 accDx = 0f
                                 accDy = 0f
@@ -663,6 +682,11 @@ fun PlayerScreen(
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
+                                if (multiTouchHeld() || dragMode < 0) {
+                                    // 双指期间不再响应单指的亮度/音量/进度调节
+                                    dragMode = -1
+                                    return@detectDragGestures
+                                }
                                 accDx += dragAmount.x
                                 accDy += dragAmount.y
                                 if (dragMode == 0) {
