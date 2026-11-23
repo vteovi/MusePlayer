@@ -456,6 +456,9 @@ fun PlayerScreen(
                                             null
                                         )
                                     )
+                                    // 字幕字号统一用固定值：忽略字幕文件内嵌字号，
+                                    // 否则 ASS 等按画面高度计算的字号在横竖屏下会不一样大
+                                    setApplyEmbeddedFontSizes(false)
                                     setFixedTextSize(
                                         TypedValue.COMPLEX_UNIT_SP,
                                         subtitleTextSizeSp(settings.subtitleSize)
