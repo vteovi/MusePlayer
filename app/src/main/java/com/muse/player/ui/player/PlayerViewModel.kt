@@ -30,6 +30,7 @@ import com.muse.player.data.SubtitleFinder
 import com.muse.player.data.network.NetworkRepository
 import com.muse.player.data.network.ServerType
 import com.muse.player.playback.PlaybackService
+import com.muse.player.playback.SubtitleOffset
 import com.muse.player.playback.vlc.VlcEngine
 import com.muse.player.playback.network.MuseDataSource
 import com.muse.player.util.NetworkTitles
@@ -62,6 +63,8 @@ data class PlayerUiState(
     val hasPrev: Boolean = false,
     val hasNext: Boolean = false,
     val speed: Float = 1f,
+    // 字幕时间偏移（毫秒），正数表示字幕延后出现
+    val subtitleDelayMs: Long = 0L,
     val aspectMode: Int = 0,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val shuffleEnabled: Boolean = false,
@@ -197,6 +200,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (entries.isEmpty()) return
         this.entries = entries
+        // 新播放任务从零开始，字幕偏移不跨视频沿用
+        SubtitleOffset.offsetMs = 0L
+        _state.update { it.copy(subtitleDelayMs = 0L) }
         val safeIndex = index.coerceIn(0, entries.lastIndex)
         val startPosition = positionMs.coerceAtLeast(0L)
         // 字幕文件查找涉及磁盘遍历，放到 IO 线程，避免拖慢起播
@@ -417,7 +423,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         controller.pause()
         usingVlc = true
-        vlc.play(url, position, speed, SettingsRepository.state.value.subtitleSize)
+        vlc.play(url, position, speed, SettingsRepository.state.value.subtitleSize, _state.value.subtitleDelayMs)
         applyVlcAspect(_state.value.aspectMode)
         loadVlcSubtitles(entry)
         _state.update {
@@ -444,7 +450,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun playVlcIndex(index: Int) {
         val entry = entries.getOrNull(index) ?: return
         val url = vlcUrl(entry) ?: return
-        vlc.play(url, 0L, _state.value.speed, SettingsRepository.state.value.subtitleSize)
+        vlc.play(url, 0L, _state.value.speed, SettingsRepository.state.value.subtitleSize, _state.value.subtitleDelayMs)
         applyVlcAspect(_state.value.aspectMode)
         loadVlcSubtitles(entry)
         _state.update {
@@ -499,7 +505,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         if (!usingVlc) return
         val entry = entries.getOrNull(_state.value.itemIndex) ?: return
         val url = vlcUrl(entry) ?: return
-        vlc.play(url, _state.value.positionMs, _state.value.speed, size)
+        vlc.play(url, _state.value.positionMs, _state.value.speed, size, _state.value.subtitleDelayMs)
         applyVlcAspect(_state.value.aspectMode)
         loadVlcSubtitles(entry)
     }
@@ -885,6 +891,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _state.update { it.copy(speed = speed) }
     }
 
+    /** 手动调节字幕时间点：正数让字幕更晚出现，负数更早 */
+    fun setSubtitleDelay(delayMs: Long) {
+        val ms = delayMs.coerceIn(-10_000L, 10_000L)
+        if (ms == _state.value.subtitleDelayMs) return
+        SubtitleOffset.offsetMs = ms
+        _state.update { it.copy(subtitleDelayMs = ms) }
+        if (usingVlc) {
+            vlc.setSubtitleDelay(ms)
+            return
+        }
+        // Media3 需要重新解码当前字幕，微调 1ms 再定位，确保一定会触发重新解码
+        player?.let { controller ->
+            controller.seekTo((controller.currentPosition + 1).coerceAtLeast(0L))
+        }
+    }
+
     /** 循环模式：关闭 → 列表循环 → 单曲循环 → 关闭 */
     fun cycleRepeatMode() {
         val controller = player ?: return
@@ -978,7 +1000,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val entry = entries.getOrNull(_state.value.itemIndex) ?: return
             val url = vlcUrl(entry) ?: return
             _state.update { it.copy(error = null, isBuffering = true) }
-            vlc.play(url, _state.value.positionMs, _state.value.speed, SettingsRepository.state.value.subtitleSize)
+            vlc.play(url, _state.value.positionMs, _state.value.speed, SettingsRepository.state.value.subtitleSize, _state.value.subtitleDelayMs)
             loadVlcSubtitles(entry)
             return
         }

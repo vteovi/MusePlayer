@@ -88,6 +88,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -116,6 +117,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -1171,6 +1173,12 @@ fun PlayerScreen(
                     showSubtitleSheet = false
                     subtitlePicker.launch(arrayOf("*/*"))
                 }
+                HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+                SubtitleSizeOptions()
+                SubtitleDelayOptions(
+                    delayMs = state.subtitleDelayMs,
+                    onDelayChange = viewModel::setSubtitleDelay
+                )
             }
         }
     }
@@ -1338,6 +1346,113 @@ private fun SheetTitle(title: String) {
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
     )
+}
+
+/** 字幕字号，选择后立即生效并持久化 */
+@Composable
+private fun SubtitleSizeOptions() {
+    val settings by SettingsRepository.state.collectAsStateWithLifecycle()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+    ) {
+        Text("字幕大小", style = MaterialTheme.typography.titleSmall)
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("小", "中", "大", "特大").forEachIndexed { index, label ->
+                val selected = settings.subtitleSize == index
+                Surface(
+                    onClick = { SettingsRepository.setSubtitleSize(index) },
+                    shape = RoundedCornerShape(50),
+                    color = if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 字幕时间点微调：正数让字幕更晚出现，负数更早 */
+@Composable
+private fun SubtitleDelayOptions(delayMs: Long, onDelayChange: (Long) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "字幕延迟",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f)
+            )
+            if (delayMs != 0L) {
+                TextButton(onClick = { onDelayChange(0L) }) {
+                    Text("重置")
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DelayStepChip("−0.5s") { onDelayChange(delayMs - 500L) }
+            DelayStepChip("−0.1s") { onDelayChange(delayMs - 100L) }
+            Text(
+                text = formatSubtitleDelay(delayMs),
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleSmall
+            )
+            DelayStepChip("+0.1s") { onDelayChange(delayMs + 100L) }
+            DelayStepChip("+0.5s") { onDelayChange(delayMs + 500L) }
+        }
+        Text(
+            text = "字幕偏早选正数，偏晚选负数",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun DelayStepChip(label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
+    }
+}
+
+private fun formatSubtitleDelay(delayMs: Long): String {
+    val seconds = delayMs / 1000f
+    return when {
+        delayMs > 0 -> "+%.1fs".format(seconds)
+        delayMs < 0 -> "%.1fs".format(seconds)
+        else -> "0.0s"
+    }
 }
 
 /** 固定画面比例：0 适应、1 裁剪、2 拉伸，3 起为具体比例，9 为自定义 */

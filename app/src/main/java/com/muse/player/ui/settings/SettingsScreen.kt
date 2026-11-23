@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -32,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -221,11 +219,10 @@ fun SettingsScreen(
             )
             SwitchRow(
                 title = "自动加载同名字幕",
-                subtitle = "自动搜索视频所在目录中的 srt / ass / vtt 字幕",
+                subtitle = "自动搜索视频所在目录中的 srt / ass / vtt 字幕；字号与时间偏移可在播放页的字幕面板中调整",
                 checked = settings.autoSubtitles,
                 onCheckedChange = SettingsRepository::setAutoSubtitles
             )
-            SubtitleSizeControl()
             SeekSensitivityControl()
             LongPressSpeedControl()
             DoubleTapSeekControl()
@@ -299,43 +296,6 @@ private fun SwitchRow(
             )
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun SubtitleSizeControl() {
-    val settings by SettingsRepository.state.collectAsStateWithLifecycle()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp)
-    ) {
-        Text("字幕大小", modifier = Modifier.padding(bottom = 6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("小", "中", "大", "特大").forEachIndexed { index, label ->
-                val selected = settings.subtitleSize == index
-                Surface(
-                    onClick = { SettingsRepository.setSubtitleSize(index) },
-                    shape = RoundedCornerShape(50),
-                    color = if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
-                    )
-                }
-            }
-        }
-        Text(
-            text = "仅调整外挂字幕的字号",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp)
-        )
     }
 }
 

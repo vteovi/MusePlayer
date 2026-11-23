@@ -58,6 +58,7 @@ class VlcEngine(context: Context) {
     private var videoLayout: VLCVideoLayout? = null
     private var pendingSeekMs = 0L
     private var pendingSpeed = 1f
+    private var subtitleDelayMs = 0L
 
     private val _state = MutableStateFlow(VlcState())
     val state: StateFlow<VlcState> = _state.asStateFlow()
@@ -68,10 +69,11 @@ class VlcEngine(context: Context) {
         mediaPlayer?.attachViews(view, null, true, false)
     }
 
-    fun play(url: String, startMs: Long, speed: Float, subtitleSize: Int) {
+    fun play(url: String, startMs: Long, speed: Float, subtitleSize: Int, subtitleDelayMs: Long) {
         stop()
         pendingSeekMs = startMs.coerceAtLeast(0L)
         pendingSpeed = speed
+        this.subtitleDelayMs = subtitleDelayMs
 
         val player = MediaPlayer(libVlc)
         mediaPlayer = player
@@ -96,6 +98,12 @@ class VlcEngine(context: Context) {
     fun addSubtitle(url: String) {
         val player = mediaPlayer ?: return
         runCatching { player.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(url), true) }
+    }
+
+    /** 字幕时间偏移（毫秒），正数表示字幕延后出现 */
+    fun setSubtitleDelay(delayMs: Long) {
+        subtitleDelayMs = delayMs
+        mediaPlayer?.setSpuDelay(delayMs * 1000L)
     }
 
     fun toggle() {
@@ -155,6 +163,9 @@ class VlcEngine(context: Context) {
                     pendingSeekMs = 0
                 }
                 player.rate = pendingSpeed
+                if (subtitleDelayMs != 0L) {
+                    player.setSpuDelay(subtitleDelayMs * 1000L)
+                }
                 _state.update {
                     it.copy(
                         playing = true,

@@ -170,6 +170,8 @@ class PlaybackService : MediaSessionService() {
         return ExoPlayer.Builder(this)
         .setMediaSourceFactory(
             DefaultMediaSourceFactory(SchemeRoutingDataSourceFactory(upstream, cached))
+                // 关闭“解封装阶段解析字幕”，改回解码器解析，以便叠加字幕时间偏移
+                .experimentalParseSubtitlesDuringExtraction(false)
         )
         .setRenderersFactory(buildRenderersFactory())
         // 调整缓冲策略：局域网拖动后尽快恢复播放，并保留最近 15 秒已下载数据
@@ -223,7 +225,7 @@ class PlaybackService : MediaSessionService() {
             SettingsRepository.state.value.decoderMode
         }
         // 自动模式：优先硬件解码，失败时自动回退到软件解码
-        val factory = DefaultRenderersFactory(this)
+        val factory = OffsetRenderersFactory(this)
             .setEnableDecoderFallback(mode == DECODER_AUTO)
         if (mode == DECODER_AUTO) return factory
 
