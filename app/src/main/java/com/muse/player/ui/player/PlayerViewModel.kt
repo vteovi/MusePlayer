@@ -23,6 +23,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.muse.player.data.AspectRepository
 import com.muse.player.data.HistoryRepository
 import com.muse.player.data.PlayEntry
 import com.muse.player.data.SettingsRepository
@@ -66,6 +67,9 @@ data class PlayerUiState(
     // 字幕时间偏移（毫秒），正数表示字幕延后出现
     val subtitleDelayMs: Long = 0L,
     val aspectMode: Int = 0,
+    // 自定义比例模式（9）下该视频使用的宽高
+    val customAspectWidth: Int = 0,
+    val customAspectHeight: Int = 0,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val shuffleEnabled: Boolean = false,
     val videoWidth: Int = 0,
@@ -424,7 +428,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         controller.pause()
         usingVlc = true
         vlc.play(url, position, speed, SettingsRepository.state.value.subtitleSize, _state.value.subtitleDelayMs)
-        applyVlcAspect(_state.value.aspectMode)
         loadVlcSubtitles(entry)
         _state.update {
             it.copy(
@@ -443,6 +446,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 currentUri = entry.uri
             )
         }
+        restoreAspect(entry.uri)
         return true
     }
 
@@ -451,7 +455,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val entry = entries.getOrNull(index) ?: return
         val url = vlcUrl(entry) ?: return
         vlc.play(url, 0L, _state.value.speed, SettingsRepository.state.value.subtitleSize, _state.value.subtitleDelayMs)
-        applyVlcAspect(_state.value.aspectMode)
         loadVlcSubtitles(entry)
         _state.update {
             it.copy(
@@ -465,6 +468,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 error = null
             )
         }
+        restoreAspect(entry.uri)
     }
 
     /** 兼容引擎不读 Media3 的字幕配置，改为播放后手动挂载同名字幕 */
@@ -554,11 +558,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val ratio = when (mode) {
             3 -> "16:9"
             4 -> "4:3"
-            5 -> "21:9"
-            6 -> "9:16"
-            7 -> {
-                val w = SettingsRepository.state.value.customAspectWidth
-                val h = SettingsRepository.state.value.customAspectHeight
+            5 -> "3:2"
+            6 -> "1:1"
+            7 -> "9:16"
+            8 -> "21:9"
+            9 -> {
+                val w = _state.value.customAspectWidth
+                val h = _state.value.customAspectHeight
                 if (w > 0 && h > 0) "$w:$h" else null
             }
 
@@ -719,6 +725,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val itemTitle = player.currentMediaItem?.mediaMetadata?.title?.toString()
             ?.takeIf { it.isNotBlank() }
 
+        val newUri = player.currentMediaItem?.localConfiguration?.uri?.toString()
+            ?: _state.value.currentUri
+        val previousUri = _state.value.currentUri
         _state.update {
             it.copy(
                 connected = true,
@@ -740,10 +749,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 subtitlesAvailable = !textDisabled && subtitleTracks.any { it.selected },
                 itemIndex = player.currentMediaItemIndex,
                 itemCount = player.mediaItemCount,
-                currentUri = player.currentMediaItem?.localConfiguration?.uri?.toString()
-                    ?: it.currentUri
+                currentUri = newUri
             )
         }
+        // 切到另一个视频时恢复它上次使用的画面比例（VLC 模式由 playVlcIndex 负责）
+        if (!usingVlc && newUri != previousUri && newUri.isNotBlank()) restoreAspect(newUri)
     }
 
     private fun trackLabel(
@@ -931,7 +941,41 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setAspectMode(mode: Int) {
         _state.update { it.copy(aspectMode = mode) }
+        persistAspect()
         applyVlcAspect(mode)
+    }
+
+    /** 自定义比例：先记录宽高，再切换到自定义模式并保存到该视频 */
+    fun setCustomAspect(width: Int, height: Int) {
+        _state.update {
+            it.copy(
+                customAspectWidth = width.coerceIn(1, 999),
+                customAspectHeight = height.coerceIn(1, 999)
+            )
+        }
+        setAspectMode(9)
+    }
+
+    /** 把当前比例记到当前视频名下 */
+    private fun persistAspect() {
+        val s = _state.value
+        AspectRepository.put(
+            s.currentUri,
+            AspectRepository.Aspect(s.aspectMode, s.customAspectWidth, s.customAspectHeight)
+        )
+    }
+
+    /** 切换到新视频时恢复该视频上次使用的比例 */
+    private fun restoreAspect(uri: String) {
+        val saved = AspectRepository.get(uri)
+        _state.update {
+            it.copy(
+                aspectMode = saved?.mode ?: 0,
+                customAspectWidth = saved?.width ?: 0,
+                customAspectHeight = saved?.height ?: 0
+            )
+        }
+        applyVlcAspect(saved?.mode ?: 0)
     }
 
     fun selectAudioTrack(index: Int) {

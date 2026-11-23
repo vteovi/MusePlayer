@@ -388,8 +388,8 @@ fun PlayerScreen(
             val rotated = surfaceRotation % 180 != 0
             val ratio = aspectRatioFor(
                 state.aspectMode,
-                settings.customAspectWidth,
-                settings.customAspectHeight
+                state.customAspectWidth,
+                state.customAspectHeight
             )
             // 交换宽高时按旋转后的显示区域计算尺寸，画面本身再旋转 90°
             val displayRatio = when {
@@ -1303,8 +1303,7 @@ fun PlayerScreen(
                     onClick = {
                         val w = widthText.toIntOrNull() ?: return@TextButton
                         val h = heightText.toIntOrNull() ?: return@TextButton
-                        SettingsRepository.setCustomAspectRatio(w, h)
-                        viewModel.setAspectMode(9)
+                        viewModel.setCustomAspect(w, h)
                         zoom = 1f
                         showCustomRatioDialog = false
                         showAspectSheet = false
