@@ -544,18 +544,20 @@ fun PlayerScreen(
                                     if (mode == 0) {
                                         val dySum = abs(cumDy0) + abs(cumDy1)
                                         val dxSum = abs(cumDx0) + abs(cumDx1)
+                                        val spreadDelta = abs(spread - startSpread)
                                         val bothMoving = abs(cumDy0) >= 8f && abs(cumDy1) >= 8f
                                         // 两指反向纵向移动 → 缩放（一指上一指下）
-                                        val apart = bothMoving && cumDy0 * cumDy1 < 0f && dySum >= 40f
+                                        val apart = bothMoving && cumDy0 * cumDy1 < 0f && dySum >= 30f
                                         // 两指纵向同向（或有一指几乎不动）→ 调速，前提是纵向占主导
                                         val together = cumDy0 * cumDy1 > 0f ||
                                             abs(cumDy0) < 8f || abs(cumDy1) < 8f
-                                        // 横向捏合：纵向位移很小但两指间距在变
-                                        val horizontallyApart = abs(spread - startSpread) >= 48f &&
-                                            dxSum > dySum
+                                        // 横向捏合：间距变化明显，且横向移动不弱于纵向
+                                        val horizontalPinch = spreadDelta >= 36f && dxSum >= dySum
                                         mode = when {
+                                            // 横向捏合优先，避免手部上移带出的纵向位移把缩放抢走
+                                            horizontalPinch -> 1
                                             together && dySum >= 30f && dySum > dxSum * 1.3f -> 2
-                                            apart || horizontallyApart -> 1
+                                            apart -> 1
                                             else -> 0
                                         }
                                     }
