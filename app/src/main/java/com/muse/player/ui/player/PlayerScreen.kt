@@ -1056,40 +1056,41 @@ fun PlayerScreen(
                                     val pxPerX = 320.dp.toPx()
                                     awaitEachGesture {
                                         val down = awaitFirstDown()
-                                        var moved = false
-                                        var released = false
-                                        // 先等长按超时；期间移动/抬手都算普通点击或拖动
-                                        val ended = withTimeoutOrNull(
-                                            viewConfiguration.longPressTimeoutMillis
-                                        ) {
-                                            while (true) {
-                                                val e = awaitPointerEvent()
-                                                if (e.changes.count { it.pressed } >= 2) break
-                                                val c = e.changes.firstOrNull { it.id == down.id }
-                                                    ?: break
-                                                if (!c.pressed) {
-                                                    c.consume()
-                                                    released = true
-                                                    break
+                                        // 按住倍速按钮期间保持控制栏，避免长按判定还没完成就被自动隐藏
+                                        speedDragging = true
+                                        try {
+                                            var moved = false
+                                            var released = false
+                                            // 先等长按超时；期间移动/抬手都算普通点击或拖动
+                                            val ended = withTimeoutOrNull(
+                                                viewConfiguration.longPressTimeoutMillis
+                                            ) {
+                                                while (true) {
+                                                    val e = awaitPointerEvent()
+                                                    if (e.changes.count { it.pressed } >= 2) break
+                                                    val c = e.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    if (!c.pressed) {
+                                                        c.consume()
+                                                        released = true
+                                                        break
+                                                    }
+                                                    if ((c.position - down.position).getDistance() >
+                                                        viewConfiguration.touchSlop
+                                                    ) {
+                                                        moved = true
+                                                        break
+                                                    }
                                                 }
-                                                if ((c.position - down.position).getDistance() >
-                                                    viewConfiguration.touchSlop
-                                                ) {
-                                                    moved = true
-                                                    break
-                                                }
+                                                true
                                             }
-                                            true
-                                        }
-                                        if (ended == null) {
-                                            // 长按倍速按钮：左右滑动调速，右滑加速、左滑减速
-                                            val base = viewModel.state.value.speed
-                                            speedDragging = true
-                                            gestureHint = GestureHint(
-                                                GestureType.INFO,
-                                                "${formatSpeed(base)} 倍速"
-                                            )
-                                            try {
+                                            if (ended == null) {
+                                                // 长按倍速按钮：左右滑动调速，右滑加速、左滑减速
+                                                val base = viewModel.state.value.speed
+                                                gestureHint = GestureHint(
+                                                    GestureType.INFO,
+                                                    "${formatSpeed(base)} 倍速"
+                                                )
                                                 var accDx = 0f
                                                 while (true) {
                                                     val e = awaitPointerEvent()
@@ -1110,13 +1111,13 @@ fun PlayerScreen(
                                                         "${formatSpeed(speed)} 倍速"
                                                     )
                                                 }
-                                            } finally {
-                                                // 无论控件是否被移除，松手/取消后都要复位
-                                                speedDragging = false
-                                                gestureHint = null
+                                            } else if (!moved && released) {
+                                                showSpeedSheet = true
                                             }
-                                        } else if (!moved && released) {
-                                            showSpeedSheet = true
+                                        } finally {
+                                            // 无论控件是否被移除，松手/取消后都要复位
+                                            speedDragging = false
+                                            gestureHint = null
                                         }
                                     }
                                 }
