@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -585,11 +586,9 @@ fun PlayerScreen(
                             viewModel.setSpeed(boostSpeed)
                             gestureHint = GestureHint(
                                 GestureType.INFO,
-                                "${formatSpeed(boostSpeed)} 倍速 · 上下或左右滑动调节"
+                                "${formatSpeed(boostSpeed)} 倍速 · 上下滑动调节"
                             )
-                            var accDx = 0f
                             var accDy = 0f
-                            var axis = 0 // 0 未定, 1 左右, 2 上下
                             var adjusted = false
                             var cancelled = false
                             while (true) {
@@ -603,20 +602,11 @@ fun PlayerScreen(
                                     change.consume()
                                     break
                                 }
-                                accDx += change.position.x - change.previousPosition.x
                                 accDy += change.position.y - change.previousPosition.y
                                 change.consume()
-                                if (axis == 0 && (abs(accDx) > 6f || abs(accDy) > 6f)) {
-                                    axis = if (abs(accDx) >= abs(accDy)) 1 else 2
-                                }
-                                if (axis != 0) {
-                                    // 右滑加速、左滑减速；上滑加速、下滑减速。
-                                    // 左右滑满屏、上下滑满屏约变化 1.5 倍速
-                                    val progress = when (axis) {
-                                        1 -> accDx / size.width * 1.5f
-                                        else -> -accDy / size.height * 1.5f
-                                    }
-                                    val raw = baseSpeed + progress
+                                if (abs(accDy) > 6f) {
+                                    // 向上滑加速、向下滑减速，滑满一屏约变化 1.5 倍速
+                                    val raw = baseSpeed - accDy / size.height * 1.5f
                                     val speed = ((raw * 20f).roundToInt() / 20f)
                                         .coerceIn(0.5f, 3f)
                                     adjusted = true
@@ -1051,7 +1041,75 @@ fun PlayerScreen(
                         }) {
                             Icon(Icons.Rounded.Lock, "锁定屏幕", tint = Color.White)
                         }
-                        TextButton(onClick = { showSpeedSheet = true }) {
+                        Box(
+                            modifier = Modifier
+                                .pointerInput(Unit) {
+                                    // 320dp 横向拖动约变化 1 倍速
+                                    val pxPerX = 320.dp.toPx()
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown()
+                                        var moved = false
+                                        var released = false
+                                        // 先等长按超时；期间移动/抬手都算普通点击或拖动
+                                        val ended = withTimeoutOrNull(
+                                            viewConfiguration.longPressTimeoutMillis
+                                        ) {
+                                            while (true) {
+                                                val e = awaitPointerEvent()
+                                                if (e.changes.count { it.pressed } >= 2) break
+                                                val c = e.changes.firstOrNull { it.id == down.id }
+                                                    ?: break
+                                                if (!c.pressed) {
+                                                    c.consume()
+                                                    released = true
+                                                    break
+                                                }
+                                                if ((c.position - down.position).getDistance() >
+                                                    viewConfiguration.touchSlop
+                                                ) {
+                                                    moved = true
+                                                    break
+                                                }
+                                            }
+                                            true
+                                        }
+                                        if (ended == null) {
+                                            // 长按倍速按钮：左右滑动调速，右滑加速、左滑减速
+                                            val base = viewModel.state.value.speed
+                                            gestureHint = GestureHint(
+                                                GestureType.INFO,
+                                                "${formatSpeed(base)} 倍速"
+                                            )
+                                            var accDx = 0f
+                                            while (true) {
+                                                val e = awaitPointerEvent()
+                                                val c = e.changes.firstOrNull { it.id == down.id }
+                                                    ?: break
+                                                accDx += c.position.x - c.previousPosition.x
+                                                val up = !c.pressed
+                                                c.consume()
+                                                if (up) break
+                                                val speed = (((base + accDx / pxPerX) * 20f)
+                                                    .roundToInt() / 20f)
+                                                    .coerceIn(0.5f, 3f)
+                                                if (speed != viewModel.state.value.speed) {
+                                                    viewModel.setSpeed(speed)
+                                                }
+                                                gestureHint = GestureHint(
+                                                    GestureType.INFO,
+                                                    "${formatSpeed(speed)} 倍速"
+                                                )
+                                            }
+                                            gestureHint = null
+                                        } else if (!moved && released) {
+                                            showSpeedSheet = true
+                                        }
+                                    }
+                                }
+                                .sizeIn(minWidth = 48.dp, minHeight = 40.dp)
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text(
                                 text = formatSpeed(state.speed),
                                 color = Color.White,
