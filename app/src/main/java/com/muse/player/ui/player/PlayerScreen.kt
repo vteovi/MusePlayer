@@ -154,6 +154,20 @@ private fun formatSpeed(speed: Float): String =
     if (speed == speed.toInt().toFloat()) "${speed.toInt()}x"
     else String.format(Locale.US, "%.2fx", speed)
 
+/** 画面比例的简短名称，用于长按切换时的提示 */
+private fun aspectLabel(mode: Int): String = when (mode) {
+    0 -> "适应屏幕"
+    1 -> "裁剪填充"
+    2 -> "拉伸填充"
+    3 -> "16:9"
+    4 -> "4:3"
+    5 -> "3:2"
+    6 -> "1:1"
+    7 -> "9:16"
+    8 -> "21:9"
+    else -> "自定义"
+}
+
 /** 设置中的字幕字号档位对应到 sp */
 private fun subtitleTextSizeSp(size: Int): Float = when (size) {
     0 -> 14f
@@ -210,8 +224,8 @@ fun PlayerScreen(
     var gestureHint by remember { mutableStateOf<GestureHint?>(null) }
     var sliderValue by remember { mutableStateOf<Float?>(null) }
     var showSpeedSheet by remember { mutableStateOf(false) }
-    // 长按倍速按钮调速进行中：控制栏保持显示，手松开才隐藏
-    var speedDragging by remember { mutableStateOf(false) }
+    // 长按倍速/画面比例按钮操作期间：控制栏保持显示，手松开才隐藏
+    var barPinned by remember { mutableStateOf(false) }
     var showAudioSheet by remember { mutableStateOf(false) }
     var showSubtitleSheet by remember { mutableStateOf(false) }
     var showAspectSheet by remember { mutableStateOf(false) }
@@ -364,8 +378,8 @@ fun PlayerScreen(
     }
 
     // 控制栏自动隐藏
-    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet, speedDragging) {
-        if (controlsVisible && state.isPlaying && !locked && !speedDragging &&
+    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet, barPinned) {
+        if (controlsVisible && state.isPlaying && !locked && !barPinned &&
             !showSpeedSheet && !showAudioSheet && !showSubtitleSheet && !showAspectSheet
         ) {
             delay(4500)
@@ -1057,7 +1071,7 @@ fun PlayerScreen(
                                     awaitEachGesture {
                                         val down = awaitFirstDown()
                                         // 按住倍速按钮期间保持控制栏，避免长按判定还没完成就被自动隐藏
-                                        speedDragging = true
+                                        barPinned = true
                                         try {
                                             var moved = false
                                             var released = false
@@ -1116,7 +1130,7 @@ fun PlayerScreen(
                                             }
                                         } finally {
                                             // 无论控件是否被移除，松手/取消后都要复位
-                                            speedDragging = false
+                                            barPinned = false
                                             gestureHint = null
                                         }
                                     }
@@ -1145,7 +1159,82 @@ fun PlayerScreen(
                         IconButton(onClick = { showAudioSheet = true }) {
                             Icon(Icons.Rounded.Audiotrack, "音轨", tint = Color.White)
                         }
-                        IconButton(onClick = { showAspectSheet = true }) {
+                        Box(
+                            modifier = Modifier
+                                .pointerInput(Unit) {
+                                    // 每滑动 40dp 切换一档比例
+                                    val stepPx = 40.dp.toPx()
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown()
+                                        barPinned = true
+                                        try {
+                                            var moved = false
+                                            var released = false
+                                            val ended = withTimeoutOrNull(
+                                                viewConfiguration.longPressTimeoutMillis
+                                            ) {
+                                                while (true) {
+                                                    val e = awaitPointerEvent()
+                                                    if (e.changes.count { it.pressed } >= 2) break
+                                                    val c = e.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    if (!c.pressed) {
+                                                        c.consume()
+                                                        released = true
+                                                        break
+                                                    }
+                                                    if ((c.position - down.position).getDistance() >
+                                                        viewConfiguration.touchSlop
+                                                    ) {
+                                                        moved = true
+                                                        break
+                                                    }
+                                                }
+                                                true
+                                            }
+                                            if (ended == null) {
+                                                // 长按画面比例按钮：上滑切换下一档，下滑切换上一档
+                                                var index = viewModel.state.value.aspectMode
+                                                    .takeIf { it in 0..8 } ?: 0
+                                                gestureHint = GestureHint(
+                                                    GestureType.INFO,
+                                                    "画面比例：${aspectLabel(index)}"
+                                                )
+                                                var accDy = 0f
+                                                var lastStep = 0
+                                                while (true) {
+                                                    val e = awaitPointerEvent()
+                                                    val c = e.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    accDy += c.position.y - c.previousPosition.y
+                                                    val up = !c.pressed
+                                                    c.consume()
+                                                    if (up) break
+                                                    val step = (accDy / stepPx).toInt()
+                                                    if (step != lastStep) {
+                                                        // 上滑（位移为负）切到下一档
+                                                        val delta = lastStep - step
+                                                        index = ((index + delta) % 9 + 9) % 9
+                                                        viewModel.setAspectMode(index)
+                                                        gestureHint = GestureHint(
+                                                            GestureType.INFO,
+                                                            "画面比例：${aspectLabel(index)}"
+                                                        )
+                                                        lastStep = step
+                                                    }
+                                                }
+                                            } else if (!moved && released) {
+                                                showAspectSheet = true
+                                            }
+                                        } finally {
+                                            barPinned = false
+                                            gestureHint = null
+                                        }
+                                    }
+                                }
+                                .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(Icons.Rounded.AspectRatio, "画面比例", tint = Color.White)
                         }
                     }
