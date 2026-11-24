@@ -22,8 +22,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateCentroid
-import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -497,90 +495,28 @@ fun PlayerScreen(
                 return t != 0L &&
                     android.os.SystemClock.uptimeMillis() - t < 250L
             }
+            // 长按调速：长按后上下拖动调节倍速；只长按不拖动则松手恢复原倍速
+            val longPressActive = remember { booleanArrayOf(false) }
+            val longPressAdjusted = remember { booleanArrayOf(false) }
+            val longPressBaseSpeed = remember { floatArrayOf(1f) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
-                        // 双指手势：上下移动调速，左右张开捏合缩放
+                        // 双指捏合缩放（调速改由长按上下滑动完成，两者不再争手势）
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
-                            var mode = 0 // 0 未定, 1 缩放, 2 调速
-                            var startSpeed = 1f
-                            var accDy = 0f
                             var hasBase = false
-                            var lastCentroidY = 0f
-                            var startSpread = 0f
-                            // 两根手指各自累计的纵向位移（从手势开始算）：
-                            // 同向移动 → 调速；相向/相背移动 → 缩放
-                            var cumDy0 = 0f
-                            var cumDy1 = 0f
-                            var cumDx0 = 0f
-                            var cumDx1 = 0f
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
                                     lastMultiTouchAt[0] = android.os.SystemClock.uptimeMillis()
-                                    val centroid = event.calculateCentroid()
-                                    val spread = event.calculateCentroidSize()
-                                    val moves = event.changes.filter { it.pressed }
                                     if (!hasBase) {
                                         hasBase = true
-                                        lastCentroidY = centroid.y
-                                        startSpread = spread
-                                        accDy = 0f
-                                        cumDy0 = 0f
-                                        cumDy1 = 0f
-                                        cumDx0 = 0f
-                                        cumDx1 = 0f
-                                        startSpeed = viewModel.state.value.speed
-                                        continue
-                                    }
-                                    accDy += centroid.y - lastCentroidY
-                                    lastCentroidY = centroid.y
-                                    cumDy0 += moves[0].position.y - moves[0].previousPosition.y
-                                    cumDy1 += moves[1].position.y - moves[1].previousPosition.y
-                                    cumDx0 += moves[0].position.x - moves[0].previousPosition.x
-                                    cumDx1 += moves[1].position.x - moves[1].previousPosition.x
-                                    if (mode == 0) {
-                                        val dySum = abs(cumDy0) + abs(cumDy1)
-                                        val dxSum = abs(cumDx0) + abs(cumDx1)
-                                        val spreadDelta = abs(spread - startSpread)
-                                        val bothMoving = abs(cumDy0) >= 8f && abs(cumDy1) >= 8f
-                                        // 两指反向纵向移动 → 缩放（一指上一指下）
-                                        val apart = bothMoving && cumDy0 * cumDy1 < 0f && dySum >= 30f
-                                        // 两指纵向同向（或有一指几乎不动）→ 调速，前提是纵向占主导
-                                        val together = cumDy0 * cumDy1 > 0f ||
-                                            abs(cumDy0) < 8f || abs(cumDy1) < 8f
-                                        // 横向捏合：间距变化明显，且横向移动不弱于纵向
-                                        val horizontalPinch = spreadDelta >= 36f && dxSum >= dySum
-                                        mode = when {
-                                            // 横向捏合优先，避免手部上移带出的纵向位移把缩放抢走
-                                            horizontalPinch -> 1
-                                            together && dySum >= 30f && dySum > dxSum * 1.3f -> 2
-                                            apart -> 1
-                                            else -> 0
-                                        }
-                                    }
-                                    when (mode) {
-                                        1 -> {
-                                            val zoomChange = event.calculateZoom()
-                                            if (zoomChange != 1f) {
-                                                zoom = (zoom * zoomChange).coerceIn(1f, 3f)
-                                            }
-                                        }
-
-                                        2 -> {
-                                            // 向上滑加速、向下滑减速，滑动约 1/3 屏高变化 1x
-                                            val raw = startSpeed - accDy / size.height * 3f
-                                            val speed = ((raw * 20f).roundToInt() / 20f)
-                                                .coerceIn(0.5f, 3f)
-                                            if (speed != viewModel.state.value.speed) {
-                                                viewModel.setSpeed(speed)
-                                                gestureHint = GestureHint(
-                                                    GestureType.INFO,
-                                                    "${formatSpeed(speed)} 倍速"
-                                                )
-                                            }
+                                    } else {
+                                        val zoomChange = event.calculateZoom()
+                                        if (zoomChange != 1f) {
+                                            zoom = (zoom * zoomChange).coerceIn(1f, 3f)
                                         }
                                     }
                                     // 双指期间消费事件，单指拖动/长按不会再响应
@@ -593,8 +529,6 @@ fun PlayerScreen(
                         }
                     }
                     .pointerInput(Unit) {
-                        var preSpeed = 1f
-                        var boosting = false
                         detectTapGestures(
                             onTap = { controlsVisible = !controlsVisible },
                             onDoubleTap = { offset ->
@@ -622,31 +556,35 @@ fun PlayerScreen(
                                 }
                             },
                             onLongPress = {
-                                // 双指操作（缩放/调速）期间不触发长按倍速
-                                if (!boosting && !multiTouchHeld()) {
-                                    preSpeed = viewModel.state.value.speed
-                                    boosting = true
+                                // 双指缩放期间不触发长按
+                                if (!multiTouchHeld()) {
+                                    longPressBaseSpeed[0] = viewModel.state.value.speed
+                                    longPressAdjusted[0] = false
+                                    longPressActive[0] = true
                                     // 倍率可在设置中调整，最低 2x
                                     val boostSpeed = SettingsRepository.state.value.longPressSpeed
                                     viewModel.setSpeed(boostSpeed)
                                     gestureHint = GestureHint(
                                         GestureType.INFO,
-                                        "${formatSpeed(boostSpeed)} 倍速播放"
+                                        "${formatSpeed(boostSpeed)} 倍速 · 上下滑动调节"
                                     )
                                 }
                             },
                             onPress = {
                                 tryAwaitRelease()
-                                if (boosting) {
-                                    boosting = false
-                                    viewModel.setSpeed(preSpeed)
+                                if (longPressActive[0]) {
+                                    longPressActive[0] = false
+                                    // 没有上下滑动过就恢复原倍速
+                                    if (!longPressAdjusted[0]) {
+                                        viewModel.setSpeed(longPressBaseSpeed[0])
+                                    }
                                     gestureHint = null
                                 }
                             }
                         )
                     }
                     .pointerInput(Unit) {
-                        var dragMode = 0 // 1 亮度, 2 音量, 3 进度
+                        var dragMode = 0 // 1 亮度, 2 音量, 3 进度, 4 长按调速
                         var accDx = 0f
                         var accDy = 0f
                         var startBrightness = 0.5f
@@ -687,6 +625,15 @@ fun PlayerScreen(
                                 dragMode = 0
                                 accDx = 0f
                                 accDy = 0f
+                                // 长按已经触发：本次拖动用来调节倍速
+                                if (longPressActive[0]) {
+                                    dragMode = 4
+                                    gestureHint = GestureHint(
+                                        GestureType.INFO,
+                                        "${formatSpeed(viewModel.state.value.speed)} 倍速"
+                                    )
+                                    return@detectDragGestures
+                                }
                                 previewUri = viewModel.player
                                     ?.currentMediaItem
                                     ?.localConfiguration
@@ -730,6 +677,21 @@ fun PlayerScreen(
                                     }
                                 }
                                 when (dragMode) {
+                                    4 -> {
+                                        // 长按后上下拖动调速：向上加速、向下减速，半屏高度变化 1 倍速
+                                        val raw = longPressBaseSpeed[0] - accDy / height * 2f
+                                        val speed = ((raw * 20f).roundToInt() / 20f)
+                                            .coerceIn(0.5f, 3f)
+                                        longPressAdjusted[0] = true
+                                        if (speed != viewModel.state.value.speed) {
+                                            viewModel.setSpeed(speed)
+                                        }
+                                        gestureHint = GestureHint(
+                                            GestureType.INFO,
+                                            "${formatSpeed(speed)} 倍速"
+                                        )
+                                    }
+
                                     1 -> {
                                         val value = (startBrightness - accDy / height * 4f)
                                             .coerceIn(0.01f, 1f)
