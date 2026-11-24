@@ -514,6 +514,8 @@ fun PlayerScreen(
                             // 同向移动 → 调速；相向/相背移动 → 缩放
                             var cumDy0 = 0f
                             var cumDy1 = 0f
+                            var cumDx0 = 0f
+                            var cumDx1 = 0f
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
@@ -528,6 +530,8 @@ fun PlayerScreen(
                                         accDy = 0f
                                         cumDy0 = 0f
                                         cumDy1 = 0f
+                                        cumDx0 = 0f
+                                        cumDx1 = 0f
                                         startSpeed = viewModel.state.value.speed
                                         continue
                                     }
@@ -535,17 +539,22 @@ fun PlayerScreen(
                                     lastCentroidY = centroid.y
                                     cumDy0 += moves[0].position.y - moves[0].previousPosition.y
                                     cumDy1 += moves[1].position.y - moves[1].previousPosition.y
+                                    cumDx0 += moves[0].position.x - moves[0].previousPosition.x
+                                    cumDx1 += moves[1].position.x - moves[1].previousPosition.x
                                     if (mode == 0) {
                                         val dySum = abs(cumDy0) + abs(cumDy1)
-                                        // 两指同向上下移动 → 调速
-                                        val together = (cumDy0 > 8f && cumDy1 > 8f) ||
-                                            (cumDy0 < -8f && cumDy1 < -8f)
-                                        // 一指上一指下（相向或相背）→ 缩放
-                                        val apart = cumDy0 * cumDy1 < 0f && dySum >= 40f
+                                        val dxSum = abs(cumDx0) + abs(cumDx1)
+                                        val bothMoving = abs(cumDy0) >= 8f && abs(cumDy1) >= 8f
+                                        // 两指反向纵向移动 → 缩放（一指上一指下）
+                                        val apart = bothMoving && cumDy0 * cumDy1 < 0f && dySum >= 40f
+                                        // 两指纵向同向（或有一指几乎不动）→ 调速，前提是纵向占主导
+                                        val together = cumDy0 * cumDy1 > 0f ||
+                                            abs(cumDy0) < 8f || abs(cumDy1) < 8f
                                         // 横向捏合：纵向位移很小但两指间距在变
-                                        val horizontallyApart = abs(spread - startSpread) >= 48f
+                                        val horizontallyApart = abs(spread - startSpread) >= 48f &&
+                                            dxSum > dySum
                                         mode = when {
-                                            together && dySum >= 30f -> 2
+                                            together && dySum >= 30f && dySum > dxSum * 1.3f -> 2
                                             apart || horizontallyApart -> 1
                                             else -> 0
                                         }
