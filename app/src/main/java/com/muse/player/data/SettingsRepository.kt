@@ -24,6 +24,7 @@ data class AppSettings(
     val sortAscending: Boolean = false, // 媒体库排序是否升序
     val seekGestureSeconds: Int = 300, // 全屏宽度左右滑动可调节的时长（秒）
     val longPressSpeed: Float = 2f, // 长按画面临时倍速播放的倍率（最低 2x）
+    val longPressSwipeSpeed: Boolean = false, // 长按画面上下滑动调速（默认关闭）
     val doubleTapSeekSeconds: Int = 10, // 双击画面两侧快进/快退的秒数
     val showMediaNotification: Boolean = false, // 通知栏媒体播放卡片（默认隐藏）
     val decoderMode: Int = 0, // 0 自动（硬解优先+软解回退）, 1 强制软件解码, 2 强制硬件解码
@@ -57,6 +58,7 @@ object SettingsRepository {
             sortAscending = sp.getBoolean("sort_ascending", false),
             seekGestureSeconds = sp.getInt("seek_gesture_seconds", 300),
             longPressSpeed = sp.getFloat("long_press_speed", 2f),
+            longPressSwipeSpeed = sp.getBoolean("long_press_swipe_speed", false),
             doubleTapSeekSeconds = sp.getInt("double_tap_seek_seconds", 10),
             showMediaNotification = sp.getBoolean("media_notification", false),
             decoderMode = sp.getInt("decoder_mode", 0),
@@ -91,6 +93,11 @@ object SettingsRepository {
     fun setAutoSubtitles(value: Boolean) {
         sp.edit().putBoolean("auto_subtitles", value).apply()
         _state.value = _state.value.copy(autoSubtitles = value)
+    }
+
+    fun setLongPressSwipeSpeed(value: Boolean) {
+        sp.edit().putBoolean("long_press_swipe_speed", value).apply()
+        _state.value = _state.value.copy(longPressSwipeSpeed = value)
     }
 
     fun setSubtitleSize(value: Int) {

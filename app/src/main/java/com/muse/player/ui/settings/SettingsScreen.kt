@@ -225,6 +225,12 @@ fun SettingsScreen(
             )
             SeekSensitivityControl()
             LongPressSpeedControl()
+            SwitchRow(
+                title = "长按画面上下滑动调速",
+                subtitle = "长按画面后上下滑动增减倍速；关闭时长按画面仅临时倍速播放",
+                checked = settings.longPressSwipeSpeed,
+                onCheckedChange = SettingsRepository::setLongPressSwipeSpeed
+            )
             DoubleTapSeekControl()
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))

@@ -210,6 +210,8 @@ fun PlayerScreen(
     var gestureHint by remember { mutableStateOf<GestureHint?>(null) }
     var sliderValue by remember { mutableStateOf<Float?>(null) }
     var showSpeedSheet by remember { mutableStateOf(false) }
+    // 长按倍速按钮调速进行中：控制栏保持显示，手松开才隐藏
+    var speedDragging by remember { mutableStateOf(false) }
     var showAudioSheet by remember { mutableStateOf(false) }
     var showSubtitleSheet by remember { mutableStateOf(false) }
     var showAspectSheet by remember { mutableStateOf(false) }
@@ -362,8 +364,8 @@ fun PlayerScreen(
     }
 
     // 控制栏自动隐藏
-    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet) {
-        if (controlsVisible && state.isPlaying && !locked &&
+    LaunchedEffect(controlsVisible, state.isPlaying, locked, showSpeedSheet, showAudioSheet, showSubtitleSheet, showAspectSheet, speedDragging) {
+        if (controlsVisible && state.isPlaying && !locked && !speedDragging &&
             !showSpeedSheet && !showAudioSheet && !showSubtitleSheet && !showAspectSheet
         ) {
             delay(4500)
@@ -582,11 +584,17 @@ fun PlayerScreen(
 
                             val baseSpeed = viewModel.state.value.speed
                             val boostSpeed = SettingsRepository.state.value.longPressSpeed
+                            val swipeSpeedEnabled =
+                                SettingsRepository.state.value.longPressSwipeSpeed
                             longPressActive[0] = true
                             viewModel.setSpeed(boostSpeed)
                             gestureHint = GestureHint(
                                 GestureType.INFO,
-                                "${formatSpeed(boostSpeed)} 倍速 · 上下滑动调节"
+                                if (swipeSpeedEnabled) {
+                                    "${formatSpeed(boostSpeed)} 倍速 · 上下滑动调节"
+                                } else {
+                                    "${formatSpeed(boostSpeed)} 倍速播放"
+                                }
                             )
                             var accDy = 0f
                             var adjusted = false
@@ -604,7 +612,7 @@ fun PlayerScreen(
                                 }
                                 accDy += change.position.y - change.previousPosition.y
                                 change.consume()
-                                if (abs(accDy) > 6f) {
+                                if (swipeSpeedEnabled && abs(accDy) > 6f) {
                                     // 向上滑加速、向下滑减速，滑满一屏约变化 1.5 倍速
                                     val raw = baseSpeed - accDy / size.height * 1.5f
                                     val speed = ((raw * 20f).roundToInt() / 20f)
@@ -1076,31 +1084,37 @@ fun PlayerScreen(
                                         if (ended == null) {
                                             // 长按倍速按钮：左右滑动调速，右滑加速、左滑减速
                                             val base = viewModel.state.value.speed
+                                            speedDragging = true
                                             gestureHint = GestureHint(
                                                 GestureType.INFO,
                                                 "${formatSpeed(base)} 倍速"
                                             )
-                                            var accDx = 0f
-                                            while (true) {
-                                                val e = awaitPointerEvent()
-                                                val c = e.changes.firstOrNull { it.id == down.id }
-                                                    ?: break
-                                                accDx += c.position.x - c.previousPosition.x
-                                                val up = !c.pressed
-                                                c.consume()
-                                                if (up) break
-                                                val speed = (((base + accDx / pxPerX) * 20f)
-                                                    .roundToInt() / 20f)
-                                                    .coerceIn(0.5f, 3f)
-                                                if (speed != viewModel.state.value.speed) {
-                                                    viewModel.setSpeed(speed)
+                                            try {
+                                                var accDx = 0f
+                                                while (true) {
+                                                    val e = awaitPointerEvent()
+                                                    val c = e.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    accDx += c.position.x - c.previousPosition.x
+                                                    val up = !c.pressed
+                                                    c.consume()
+                                                    if (up) break
+                                                    val speed = (((base + accDx / pxPerX) * 20f)
+                                                        .roundToInt() / 20f)
+                                                        .coerceIn(0.5f, 3f)
+                                                    if (speed != viewModel.state.value.speed) {
+                                                        viewModel.setSpeed(speed)
+                                                    }
+                                                    gestureHint = GestureHint(
+                                                        GestureType.INFO,
+                                                        "${formatSpeed(speed)} 倍速"
+                                                    )
                                                 }
-                                                gestureHint = GestureHint(
-                                                    GestureType.INFO,
-                                                    "${formatSpeed(speed)} 倍速"
-                                                )
+                                            } finally {
+                                                // 无论控件是否被移除，松手/取消后都要复位
+                                                speedDragging = false
+                                                gestureHint = null
                                             }
-                                            gestureHint = null
                                         } else if (!moved && released) {
                                             showSpeedSheet = true
                                         }
