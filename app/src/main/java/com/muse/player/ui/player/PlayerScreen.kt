@@ -510,40 +510,43 @@ fun PlayerScreen(
                             var hasBase = false
                             var lastCentroidY = 0f
                             var startSpread = 0f
-                            // 累计两指横向/纵向移动量，用移动方向区分手势：
-                            // 上下滑是纵向为主，捏合缩放通常是横向张开
-                            var accDxPx = 0f
-                            var accDyPx = 0f
+                            // 两根手指各自累计的纵向位移（从手势开始算）：
+                            // 同向移动 → 调速；相向/相背移动 → 缩放
+                            var cumDy0 = 0f
+                            var cumDy1 = 0f
                             do {
                                 val event = awaitPointerEvent()
                                 if (event.changes.count { it.pressed } >= 2) {
                                     lastMultiTouchAt[0] = android.os.SystemClock.uptimeMillis()
                                     val centroid = event.calculateCentroid()
                                     val spread = event.calculateCentroidSize()
+                                    val moves = event.changes.filter { it.pressed }
                                     if (!hasBase) {
                                         hasBase = true
                                         lastCentroidY = centroid.y
                                         startSpread = spread
                                         accDy = 0f
-                                        accDxPx = 0f
-                                        accDyPx = 0f
+                                        cumDy0 = 0f
+                                        cumDy1 = 0f
                                         startSpeed = viewModel.state.value.speed
                                         continue
                                     }
                                     accDy += centroid.y - lastCentroidY
                                     lastCentroidY = centroid.y
-                                    event.changes.filter { it.pressed }.forEach { change ->
-                                        accDxPx += abs(change.position.x - change.previousPosition.x)
-                                        accDyPx += abs(change.position.y - change.previousPosition.y)
-                                    }
+                                    cumDy0 += moves[0].position.y - moves[0].previousPosition.y
+                                    cumDy1 += moves[1].position.y - moves[1].previousPosition.y
                                     if (mode == 0) {
+                                        val dySum = abs(cumDy0) + abs(cumDy1)
+                                        // 两指同向上下移动 → 调速
+                                        val together = (cumDy0 > 8f && cumDy1 > 8f) ||
+                                            (cumDy0 < -8f && cumDy1 < -8f)
+                                        // 一指上一指下（相向或相背）→ 缩放
+                                        val apart = cumDy0 * cumDy1 < 0f && dySum >= 40f
+                                        // 横向捏合：纵向位移很小但两指间距在变
+                                        val horizontallyApart = abs(spread - startSpread) >= 48f
                                         mode = when {
-                                            // 两指整体以纵向移动为主 → 调速
-                                            accDyPx >= 30f && accDyPx > accDxPx * 1.3f -> 2
-                                            // 两指横向张开/收拢为主 → 缩放
-                                            accDxPx >= 30f && accDxPx > accDyPx * 1.3f -> 1
-                                            // 斜向捏合：间距变化明显 → 缩放
-                                            abs(spread - startSpread) >= 40f -> 1
+                                            together && dySum >= 30f -> 2
+                                            apart || horizontallyApart -> 1
                                             else -> 0
                                         }
                                     }
