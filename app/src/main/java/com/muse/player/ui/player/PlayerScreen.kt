@@ -140,6 +140,7 @@ import com.muse.player.util.formatDuration
 import org.videolan.libvlc.util.VLCVideoLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -495,10 +496,8 @@ fun PlayerScreen(
                 return t != 0L &&
                     android.os.SystemClock.uptimeMillis() - t < 250L
             }
-            // 长按调速：长按后上下拖动调节倍速；只长按不拖动则松手恢复原倍速
+            // 长按调速进行中（拖动/亮度/音量让路）
             val longPressActive = remember { booleanArrayOf(false) }
-            val longPressAdjusted = remember { booleanArrayOf(false) }
-            val longPressBaseSpeed = remember { floatArrayOf(1f) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -554,37 +553,81 @@ fun PlayerScreen(
                                         gestureHint = GestureHint(GestureType.INFO, "前进 $seconds 秒")
                                     }
                                 }
-                            },
-                            onLongPress = {
-                                // 双指缩放期间不触发长按
-                                if (!multiTouchHeld()) {
-                                    longPressBaseSpeed[0] = viewModel.state.value.speed
-                                    longPressAdjusted[0] = false
-                                    longPressActive[0] = true
-                                    // 倍率可在设置中调整，最低 2x
-                                    val boostSpeed = SettingsRepository.state.value.longPressSpeed
-                                    viewModel.setSpeed(boostSpeed)
-                                    gestureHint = GestureHint(
-                                        GestureType.INFO,
-                                        "${formatSpeed(boostSpeed)} 倍速 · 上下滑动调节"
-                                    )
-                                }
-                            },
-                            onPress = {
-                                tryAwaitRelease()
-                                if (longPressActive[0]) {
-                                    longPressActive[0] = false
-                                    // 没有上下滑动过就恢复原倍速
-                                    if (!longPressAdjusted[0]) {
-                                        viewModel.setSpeed(longPressBaseSpeed[0])
-                                    }
-                                    gestureHint = null
-                                }
                             }
                         )
                     }
                     .pointerInput(Unit) {
-                        var dragMode = 0 // 1 亮度, 2 音量, 3 进度, 4 长按调速
+                        // 长按 + 上下滑动调速。单独实现而不是用 detectTapGestures 的
+                        // onLongPress：后者在长按后会消费后续事件，拖动逻辑收不到。
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var twoFingers = false
+                            // 等待长按超时；期间移动超过触摸阈值、抬起或第二指落下都算放弃
+                            val ended = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.count { it.pressed } >= 2) {
+                                        twoFingers = true
+                                        break
+                                    }
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) break
+                                    val moved = (change.position - down.position).getDistance()
+                                    if (moved > viewConfiguration.touchSlop) break
+                                }
+                                true
+                            }
+                            if (ended == true || twoFingers) return@awaitEachGesture
+
+                            val baseSpeed = viewModel.state.value.speed
+                            val boostSpeed = SettingsRepository.state.value.longPressSpeed
+                            longPressActive[0] = true
+                            viewModel.setSpeed(boostSpeed)
+                            gestureHint = GestureHint(
+                                GestureType.INFO,
+                                "${formatSpeed(boostSpeed)} 倍速 · 上下滑动调节"
+                            )
+                            var accDy = 0f
+                            var adjusted = false
+                            var cancelled = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.count { it.pressed } >= 2) {
+                                    cancelled = true
+                                    break
+                                }
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    break
+                                }
+                                accDy += change.position.y - change.previousPosition.y
+                                change.consume()
+                                if (abs(accDy) > 6f) {
+                                    // 向上滑加速、向下滑减速，半屏高度变化 1 倍速
+                                    val raw = baseSpeed - accDy / size.height * 2f
+                                    val speed = ((raw * 20f).roundToInt() / 20f)
+                                        .coerceIn(0.5f, 3f)
+                                    adjusted = true
+                                    if (speed != viewModel.state.value.speed) {
+                                        viewModel.setSpeed(speed)
+                                    }
+                                    gestureHint = GestureHint(
+                                        GestureType.INFO,
+                                        "${formatSpeed(speed)} 倍速"
+                                    )
+                                }
+                            }
+                            if (!adjusted || cancelled) {
+                                // 只长按没滑动/被双指打断：恢复原倍速
+                                viewModel.setSpeed(baseSpeed)
+                            }
+                            longPressActive[0] = false
+                            gestureHint = null
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        var dragMode = 0 // 1 亮度, 2 音量, 3 进度
                         var accDx = 0f
                         var accDy = 0f
                         var startBrightness = 0.5f
@@ -618,22 +661,14 @@ fun PlayerScreen(
 
                         detectDragGestures(
                             onDragStart = { offset ->
-                                if (multiTouchHeld()) {
+                                if (multiTouchHeld() || longPressActive[0]) {
+                                    // 双指缩放或长按调速期间不接管单指拖动
                                     dragMode = -1
                                     return@detectDragGestures
                                 }
                                 dragMode = 0
                                 accDx = 0f
                                 accDy = 0f
-                                // 长按已经触发：本次拖动用来调节倍速
-                                if (longPressActive[0]) {
-                                    dragMode = 4
-                                    gestureHint = GestureHint(
-                                        GestureType.INFO,
-                                        "${formatSpeed(viewModel.state.value.speed)} 倍速"
-                                    )
-                                    return@detectDragGestures
-                                }
                                 previewUri = viewModel.player
                                     ?.currentMediaItem
                                     ?.localConfiguration
@@ -657,8 +692,8 @@ fun PlayerScreen(
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                if (multiTouchHeld() || dragMode < 0) {
-                                    // 双指期间不再响应单指的亮度/音量/进度调节
+                                if (multiTouchHeld() || longPressActive[0] || dragMode < 0) {
+                                    // 双指/长按调速期间不再响应单指的亮度/音量/进度调节
                                     dragMode = -1
                                     return@detectDragGestures
                                 }
@@ -677,21 +712,6 @@ fun PlayerScreen(
                                     }
                                 }
                                 when (dragMode) {
-                                    4 -> {
-                                        // 长按后上下拖动调速：向上加速、向下减速，半屏高度变化 1 倍速
-                                        val raw = longPressBaseSpeed[0] - accDy / height * 2f
-                                        val speed = ((raw * 20f).roundToInt() / 20f)
-                                            .coerceIn(0.5f, 3f)
-                                        longPressAdjusted[0] = true
-                                        if (speed != viewModel.state.value.speed) {
-                                            viewModel.setSpeed(speed)
-                                        }
-                                        gestureHint = GestureHint(
-                                            GestureType.INFO,
-                                            "${formatSpeed(speed)} 倍速"
-                                        )
-                                    }
-
                                     1 -> {
                                         val value = (startBrightness - accDy / height * 4f)
                                             .coerceIn(0.01f, 1f)
