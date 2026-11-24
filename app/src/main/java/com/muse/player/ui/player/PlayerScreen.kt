@@ -168,6 +168,10 @@ private fun aspectLabel(mode: Int): String = when (mode) {
     else -> "自定义"
 }
 
+/** 字幕偏移的显示文本，如 +1.5s / -0.8s */
+private fun formatDelay(ms: Long): String =
+    if (ms == 0L) "0.0s" else String.format(Locale.US, "%+.1fs", ms / 1000f)
+
 /** 设置中的字幕字号档位对应到 sp */
 private fun subtitleTextSizeSp(size: Int): Float = when (size) {
     0 -> 14f
@@ -1145,7 +1149,81 @@ fun PlayerScreen(
                                 fontWeight = FontWeight.Medium
                             )
                         }
-                        IconButton(onClick = { showSubtitleSheet = true }) {
+                        Box(
+                            modifier = Modifier
+                                .pointerInput(Unit) {
+                                    // 每滑动 40dp 字幕偏移变化 0.5 秒
+                                    val stepPx = 40.dp.toPx()
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown()
+                                        barPinned = true
+                                        try {
+                                            var moved = false
+                                            var released = false
+                                            val ended = withTimeoutOrNull(
+                                                viewConfiguration.longPressTimeoutMillis
+                                            ) {
+                                                while (true) {
+                                                    val e = awaitPointerEvent()
+                                                    if (e.changes.count { it.pressed } >= 2) break
+                                                    val c = e.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    if (!c.pressed) {
+                                                        c.consume()
+                                                        released = true
+                                                        break
+                                                    }
+                                                    if ((c.position - down.position).getDistance() >
+                                                        viewConfiguration.touchSlop
+                                                    ) {
+                                                        moved = true
+                                                        break
+                                                    }
+                                                }
+                                                true
+                                            }
+                                            if (ended == null) {
+                                                // 长按字幕按钮：右滑字幕延后、左滑字幕提前
+                                                gestureHint = GestureHint(
+                                                    GestureType.INFO,
+                                                    "字幕偏移：${formatDelay(viewModel.state.value.subtitleDelayMs)}"
+                                                )
+                                                var accDx = 0f
+                                                var lastStep = 0
+                                                while (true) {
+                                                    val e = awaitPointerEvent()
+                                                    val c = e.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    accDx += c.position.x - c.previousPosition.x
+                                                    val up = !c.pressed
+                                                    c.consume()
+                                                    if (up) break
+                                                    val step = (accDx / stepPx).toInt()
+                                                    if (step != lastStep) {
+                                                        val delay =
+                                                            (viewModel.state.value.subtitleDelayMs +
+                                                                (step - lastStep) * 500L)
+                                                                .coerceIn(-10_000L, 10_000L)
+                                                        viewModel.setSubtitleDelay(delay)
+                                                        gestureHint = GestureHint(
+                                                            GestureType.INFO,
+                                                            "字幕偏移：${formatDelay(delay)}"
+                                                        )
+                                                        lastStep = step
+                                                    }
+                                                }
+                                            } else if (!moved && released) {
+                                                showSubtitleSheet = true
+                                            }
+                                        } finally {
+                                            barPinned = false
+                                            gestureHint = null
+                                        }
+                                    }
+                                }
+                                .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 Icons.Rounded.Subtitles,
                                 "字幕",
@@ -1156,7 +1234,99 @@ fun PlayerScreen(
                                 }
                             )
                         }
-                        IconButton(onClick = { showAudioSheet = true }) {
+                        Box(
+                            modifier = Modifier
+                                .pointerInput(Unit) {
+                                    // 每滑动 40dp 切换一条音轨
+                                    val stepPx = 40.dp.toPx()
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown()
+                                        barPinned = true
+                                        try {
+                                            var moved = false
+                                            var released = false
+                                            val ended = withTimeoutOrNull(
+                                                viewConfiguration.longPressTimeoutMillis
+                                            ) {
+                                                while (true) {
+                                                    val e = awaitPointerEvent()
+                                                    if (e.changes.count { it.pressed } >= 2) break
+                                                    val c = e.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                    if (!c.pressed) {
+                                                        c.consume()
+                                                        released = true
+                                                        break
+                                                    }
+                                                    if ((c.position - down.position).getDistance() >
+                                                        viewConfiguration.touchSlop
+                                                    ) {
+                                                        moved = true
+                                                        break
+                                                    }
+                                                }
+                                                true
+                                            }
+                                            if (ended == null) {
+                                                // 长按音轨按钮：上滑切换下一轨，下滑切换上一轨
+                                                val tracks = viewModel.state.value.audioTracks
+                                                if (tracks.isEmpty()) {
+                                                    gestureHint = GestureHint(
+                                                        GestureType.INFO,
+                                                        "没有可切换的音轨"
+                                                    )
+                                                    // 继续消费事件直到抬手，避免误触发其他手势
+                                                    while (true) {
+                                                        val e = awaitPointerEvent()
+                                                        val c = e.changes.firstOrNull { it.id == down.id }
+                                                            ?: break
+                                                        val up = !c.pressed
+                                                        c.consume()
+                                                        if (up) break
+                                                    }
+                                                } else {
+                                                    var index = tracks.indexOfFirst { it.selected }
+                                                        .coerceAtLeast(0)
+                                                    gestureHint = GestureHint(
+                                                        GestureType.INFO,
+                                                        "音轨：${tracks[index].label}"
+                                                    )
+                                                    var accDy = 0f
+                                                    var lastStep = 0
+                                                    while (true) {
+                                                        val e = awaitPointerEvent()
+                                                        val c = e.changes.firstOrNull { it.id == down.id }
+                                                            ?: break
+                                                        accDy += c.position.y - c.previousPosition.y
+                                                        val up = !c.pressed
+                                                        c.consume()
+                                                        if (up) break
+                                                        val step = (accDy / stepPx).toInt()
+                                                        if (step != lastStep) {
+                                                            val delta = lastStep - step
+                                                            index = ((index + delta) % tracks.size +
+                                                                tracks.size) % tracks.size
+                                                            viewModel.selectAudioTrack(index)
+                                                            gestureHint = GestureHint(
+                                                                GestureType.INFO,
+                                                                "音轨：${tracks[index].label}"
+                                                            )
+                                                            lastStep = step
+                                                        }
+                                                    }
+                                                }
+                                            } else if (!moved && released) {
+                                                showAudioSheet = true
+                                            }
+                                        } finally {
+                                            barPinned = false
+                                            gestureHint = null
+                                        }
+                                    }
+                                }
+                                .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(Icons.Rounded.Audiotrack, "音轨", tint = Color.White)
                         }
                         Box(
