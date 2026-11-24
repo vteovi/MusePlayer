@@ -585,9 +585,11 @@ fun PlayerScreen(
                             viewModel.setSpeed(boostSpeed)
                             gestureHint = GestureHint(
                                 GestureType.INFO,
-                                "${formatSpeed(boostSpeed)} 倍速 · 上下滑动调节"
+                                "${formatSpeed(boostSpeed)} 倍速 · 上下或左右滑动调节"
                             )
+                            var accDx = 0f
                             var accDy = 0f
+                            var axis = 0 // 0 未定, 1 左右, 2 上下
                             var adjusted = false
                             var cancelled = false
                             while (true) {
@@ -601,11 +603,20 @@ fun PlayerScreen(
                                     change.consume()
                                     break
                                 }
+                                accDx += change.position.x - change.previousPosition.x
                                 accDy += change.position.y - change.previousPosition.y
                                 change.consume()
-                                if (abs(accDy) > 6f) {
-                                    // 向上滑加速、向下滑减速，半屏高度变化 1 倍速
-                                    val raw = baseSpeed - accDy / size.height * 2f
+                                if (axis == 0 && (abs(accDx) > 6f || abs(accDy) > 6f)) {
+                                    axis = if (abs(accDx) >= abs(accDy)) 1 else 2
+                                }
+                                if (axis != 0) {
+                                    // 右滑加速、左滑减速；上滑加速、下滑减速。
+                                    // 左右滑满屏、上下滑满屏约变化 1.5 倍速
+                                    val progress = when (axis) {
+                                        1 -> accDx / size.width * 1.5f
+                                        else -> -accDy / size.height * 1.5f
+                                    }
+                                    val raw = baseSpeed + progress
                                     val speed = ((raw * 20f).roundToInt() / 20f)
                                         .coerceIn(0.5f, 3f)
                                     adjusted = true
