@@ -71,18 +71,23 @@ fun FolderContent(
     val wideGridState = rememberLazyGridState()
 
     // 打开文件夹或回到前台时，滚动到该文件夹里上次播放的视频
+    // 列表可能晚于历史记录就绪，列表变化时重新尝试；同一次进入只滚动一次
+    var lastScrollKey by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(
         settings.scrollToLastPlayed,
         bucketId,
         query,
         state.loading,
         state.history.firstOrNull()?.uri,
+        videos,
         resumeTick
     ) {
         if (!settings.scrollToLastPlayed || query.isNotBlank() || state.loading) {
             return@LaunchedEffect
         }
         val lastUri = state.history.firstOrNull()?.uri ?: return@LaunchedEffect
+        val key = "$resumeTick|$lastUri"
+        if (lastScrollKey == key) return@LaunchedEffect
         val index = videos.indexOfFirst { it.uri.toString() == lastUri }
         if (index <= 0) return@LaunchedEffect
         when {
@@ -90,6 +95,7 @@ fun FolderContent(
             wide -> wideGridState.scrollToItem(index)
             else -> listState.scrollToItem(index)
         }
+        lastScrollKey = key
     }
 
     fun play(video: VideoItem, fromStart: Boolean = false) {

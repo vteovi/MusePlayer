@@ -282,6 +282,9 @@ fun LibraryScreen(
     }
 
     // 打开媒体库或回到前台时，自动滚动到上次播放的视频（可在设置中关闭）
+    // 冷启动时历史记录先于视频列表就绪，因此列表变化也要重新尝试定位；
+    // 用 lastScrollKey 保证同一次进入只滚动一次，排序/刷新不会反复跳动
+    var lastScrollKey by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(
         appSettings.scrollToLastPlayed,
         state.tab,
@@ -290,12 +293,15 @@ fun LibraryScreen(
         state.loading,
         state.query,
         state.history.firstOrNull()?.uri,
+        state.videos,
         resumeTick
     ) {
         if (!appSettings.scrollToLastPlayed) return@LaunchedEffect
         if (state.tab != 0 || mediaMode != 0 || state.loading) return@LaunchedEffect
         if (state.query.isNotBlank()) return@LaunchedEffect
         val lastUri = state.history.firstOrNull()?.uri ?: return@LaunchedEffect
+        val key = "$resumeTick|$lastUri"
+        if (lastScrollKey == key) return@LaunchedEffect
         val index = state.videos.indexOfFirst { it.uri.toString() == lastUri }
         if (index <= 0) return@LaunchedEffect
         when {
@@ -303,6 +309,7 @@ fun LibraryScreen(
             wide -> wideGridState.scrollToItem(index)
             else -> listState.scrollToItem(index)
         }
+        lastScrollKey = key
     }
 
     Scaffold(
