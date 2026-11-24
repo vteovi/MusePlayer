@@ -612,9 +612,9 @@ fun PlayerScreen(
                                 }
                                 accDy += change.position.y - change.previousPosition.y
                                 change.consume()
-                                if (swipeSpeedEnabled && abs(accDy) > 6f) {
-                                    // 向上滑加速、向下滑减速，滑满一屏约变化 1.5 倍速
-                                    val raw = baseSpeed - accDy / size.height * 1.5f
+                                if (swipeSpeedEnabled && abs(accDy) > 12f) {
+                                    // 向上滑加速、向下滑减速，半屏高度变化 1 倍速
+                                    val raw = baseSpeed - accDy / size.height * 2f
                                     val speed = ((raw * 20f).roundToInt() / 20f)
                                         .coerceIn(0.5f, 3f)
                                     adjusted = true
