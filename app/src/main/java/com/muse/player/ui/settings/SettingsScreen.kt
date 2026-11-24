@@ -151,6 +151,12 @@ fun SettingsScreen(
                 checked = settings.lowPerformanceMode,
                 onCheckedChange = SettingsRepository::setLowPerformanceMode
             )
+            SwitchRow(
+                title = "滚动到上次播放",
+                subtitle = "打开媒体库时自动滚动到上次播放的视频位置",
+                checked = settings.scrollToLastPlayed,
+                onCheckedChange = SettingsRepository::setScrollToLastPlayed
+            )
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionTitle("导航栏")

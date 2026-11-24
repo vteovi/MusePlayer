@@ -31,9 +31,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -153,6 +155,8 @@ fun LibraryScreen(
     var infoVideo by remember { mutableStateOf<VideoItem?>(null) }
     var actionVideo by remember { mutableStateOf<VideoItem?>(null) }
     var actionFolder by remember { mutableStateOf<FolderItem?>(null) }
+    // 每次回到前台递增，用于重新定位到上次播放的视频
+    var resumeTick by remember { mutableIntStateOf(0) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -170,6 +174,7 @@ fun LibraryScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                resumeTick++
                 val granted = MediaPermissions.granted(context)
                 if (granted != hasPermission) {
                     hasPermission = granted
@@ -253,6 +258,9 @@ fun LibraryScreen(
     val pagerState = rememberPagerState(initialPage = initialPage) { tabs.size }
 
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val wideGridState = rememberLazyGridState()
 
     // 页码停稳后再同步 tab：滑动过程中写回状态会让整页重组，手势会掉帧
     LaunchedEffect(pagerState, tabs) {
@@ -270,6 +278,30 @@ fun LibraryScreen(
             pagerState.scrollToPage(0)
         } else if (target != pagerState.currentPage) {
             pagerState.scrollToPage(target)
+        }
+    }
+
+    // 打开媒体库或回到前台时，自动滚动到上次播放的视频（可在设置中关闭）
+    LaunchedEffect(
+        appSettings.scrollToLastPlayed,
+        state.tab,
+        mediaMode,
+        openFolderId,
+        state.loading,
+        state.query,
+        state.history.firstOrNull()?.uri,
+        resumeTick
+    ) {
+        if (!appSettings.scrollToLastPlayed) return@LaunchedEffect
+        if (state.tab != 0 || mediaMode != 0 || state.loading) return@LaunchedEffect
+        if (state.query.isNotBlank()) return@LaunchedEffect
+        val lastUri = state.history.firstOrNull()?.uri ?: return@LaunchedEffect
+        val index = state.videos.indexOfFirst { it.uri.toString() == lastUri }
+        if (index <= 0) return@LaunchedEffect
+        when {
+            state.grid -> gridState.scrollToItem(index)
+            wide -> wideGridState.scrollToItem(index)
+            else -> listState.scrollToItem(index)
         }
     }
 
@@ -544,7 +576,8 @@ fun LibraryScreen(
                             viewModel = viewModel,
                             bucketId = openFolder,
                             query = state.query,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            resumeTick = resumeTick
                         )
                     } else if (mediaMode == 1) {
                         if (state.folders.isEmpty()) {
@@ -584,6 +617,7 @@ fun LibraryScreen(
                             } else {
                                 GridCells.Fixed(2)
                             },
+                            state = gridState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -602,6 +636,7 @@ fun LibraryScreen(
                         // 宽屏列表视图：多列排布，而不是拉成单列长条
                         wide -> LazyVerticalGrid(
                             columns = GridCells.Adaptive(360.dp),
+                            state = wideGridState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -618,6 +653,7 @@ fun LibraryScreen(
 
                         else -> LazyColumn(
                             modifier = Modifier.fillMaxSize(),
+                            state = listState,
                             contentPadding = PaddingValues(vertical = 8.dp)
                         ) {
                             items(state.videos, key = { it.id }) { video ->
