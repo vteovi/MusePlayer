@@ -3,6 +3,11 @@
 记录格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 未单独打标签的中间版本会并入其后的正式发布。
 
+## [2.6.30] - 2026-11-27
+
+### 新增
+- 启动应用时检查剪切板：若含有 http/https/rtsp/rtp/rtmp/mms 链接，弹出「发现播放链接」对话框，可直接播放或取消
+
 ## [2.6.29] - 2026-11-24
 
 ### 修复
