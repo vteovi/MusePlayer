@@ -7,13 +7,18 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -26,6 +31,7 @@ import com.muse.player.ui.network.NetworkViewModel
 import com.muse.player.ui.player.PlayerLauncher
 import com.muse.player.ui.settings.SettingsScreen
 import com.muse.player.util.NetworkTitles
+import kotlinx.coroutines.delay
 
 /** 可识别的播放链接协议，与应用声明的 intent 过滤器保持一致 */
 private val playableUrlRegex =
@@ -47,11 +53,28 @@ fun MuseApp() {
     val libraryViewModel: LibraryViewModel = viewModel()
     val networkViewModel: NetworkViewModel = viewModel()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    // 启动时检查剪切板中是否有可播放的链接，有则询问是否播放
+    // 启动时以及每次从多任务切回前台，都检查剪切板中是否有可播放的链接
     var clipboardUrl by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        clipboardUrl = playableUrlFromClipboard(context)
+    // 已提示过的链接，避免同一链接反复弹窗；剪切板换成新链接后会再次提示
+    var handledUrl by remember { mutableStateOf<String?>(null) }
+    var checkTrigger by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) checkTrigger++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(checkTrigger) {
+        if (clipboardUrl != null) return@LaunchedEffect
+        // 稍等片刻再读，确保窗口已获得焦点（Android 10+ 仅前台可读剪切板）
+        delay(350)
+        val url = playableUrlFromClipboard(context) ?: return@LaunchedEffect
+        if (url != handledUrl) clipboardUrl = url
     }
 
     clipboardUrl?.let { url ->
@@ -68,6 +91,7 @@ fun MuseApp() {
             confirmButton = {
                 TextButton(onClick = {
                     clipboardUrl = null
+                    handledUrl = url
                     PlayerLauncher.open(
                         context,
                         listOf(
@@ -83,7 +107,10 @@ fun MuseApp() {
                 }) { Text("播放") }
             },
             dismissButton = {
-                TextButton(onClick = { clipboardUrl = null }) { Text("取消") }
+                TextButton(onClick = {
+                    clipboardUrl = null
+                    handledUrl = url
+                }) { Text("取消") }
             }
         )
     }
