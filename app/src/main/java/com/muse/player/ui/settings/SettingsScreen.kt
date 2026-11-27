@@ -240,6 +240,27 @@ fun SettingsScreen(
             DoubleTapSeekControl()
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionTitle("播放屏幕方向")
+            DecoderOptionRow(
+                title = "自动旋转",
+                subtitle = "忽略系统旋转锁定，随手机方向自动切换横竖屏",
+                selected = settings.playerOrientation == 0,
+                onClick = { SettingsRepository.setPlayerOrientation(0) }
+            )
+            DecoderOptionRow(
+                title = "跟随系统",
+                subtitle = "使用系统的自动旋转与方向锁定设置",
+                selected = settings.playerOrientation == 1,
+                onClick = { SettingsRepository.setPlayerOrientation(1) }
+            )
+            DecoderOptionRow(
+                title = "跟随视频",
+                subtitle = "横屏视频锁横屏、竖屏视频锁竖屏，播放时自动切换",
+                selected = settings.playerOrientation == 2,
+                onClick = { SettingsRepository.setPlayerOrientation(2) }
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionTitle("解码")
             DecoderOptionRow(
                 title = "自动（推荐）",

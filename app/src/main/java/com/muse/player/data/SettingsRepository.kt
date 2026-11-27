@@ -27,6 +27,7 @@ data class AppSettings(
     val longPressSwipeSpeed: Boolean = false, // 长按画面上下滑动调速（默认关闭）
     val scrollToLastPlayed: Boolean = true, // 打开媒体库时滚动到上次播放的视频
     val doubleTapSeekSeconds: Int = 10, // 双击画面两侧快进/快退的秒数
+    val playerOrientation: Int = 1, // 播放屏幕方向：0 自动旋转, 1 跟随系统, 2 跟随视频
     val showMediaNotification: Boolean = false, // 通知栏媒体播放卡片（默认隐藏）
     val decoderMode: Int = 0, // 0 自动（硬解优先+软解回退）, 1 强制软件解码, 2 强制硬件解码
     val repeatMode: Int = 0, // 0 顺序播放, 1 单曲循环, 2 列表循环
@@ -62,6 +63,7 @@ object SettingsRepository {
             longPressSwipeSpeed = sp.getBoolean("long_press_swipe_speed", false),
             scrollToLastPlayed = sp.getBoolean("scroll_to_last_played", true),
             doubleTapSeekSeconds = sp.getInt("double_tap_seek_seconds", 10),
+            playerOrientation = sp.getInt("player_orientation", 1),
             showMediaNotification = sp.getBoolean("media_notification", false),
             decoderMode = sp.getInt("decoder_mode", 0),
             repeatMode = sp.getInt("repeat_mode", 0),
@@ -105,6 +107,11 @@ object SettingsRepository {
     fun setScrollToLastPlayed(value: Boolean) {
         sp.edit().putBoolean("scroll_to_last_played", value).apply()
         _state.value = _state.value.copy(scrollToLastPlayed = value)
+    }
+
+    fun setPlayerOrientation(value: Int) {
+        sp.edit().putInt("player_orientation", value).apply()
+        _state.value = _state.value.copy(playerOrientation = value)
     }
 
     fun setSubtitleSize(value: Int) {

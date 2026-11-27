@@ -276,7 +276,11 @@ fun PlayerScreen(
         w.attributes = lp
     }
 
+    // 手动点旋转按钮后，本次播放内不再按设置强制切换；切换视频时恢复按设置应用
+    var manualOrientation by remember(state.currentUri) { mutableStateOf(false) }
+
     val cycleOrientation: () -> Unit = {
+        manualOrientation = true
         val current = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         val next = when (current) {
             ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -292,6 +296,33 @@ fun PlayerScreen(
                 else -> "自动旋转"
             }
         )
+    }
+
+    // 按设置应用播放屏幕方向：跟随视频时依据画面宽高决定横屏还是竖屏
+    LaunchedEffect(
+        settings.playerOrientation,
+        state.currentUri,
+        state.videoWidth,
+        state.videoHeight,
+        manualOrientation
+    ) {
+        if (manualOrientation) return@LaunchedEffect
+        val act = activity ?: return@LaunchedEffect
+        val next = when (settings.playerOrientation) {
+            // 自动旋转：由方向传感器决定，忽略系统的旋转锁定
+            0 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            // 跟随视频：横屏视频锁横屏，竖屏视频锁竖屏；画面尺寸未知时先交给系统
+            2 -> when {
+                state.videoWidth <= 0 || state.videoHeight <= 0 ->
+                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                state.videoWidth >= state.videoHeight ->
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
+            // 跟随系统：保持系统默认策略（含自动旋转开关与方向锁定）
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        if (act.requestedOrientation != next) act.requestedOrientation = next
     }
 
     val subtitlePicker = rememberLauncherForActivityResult(
