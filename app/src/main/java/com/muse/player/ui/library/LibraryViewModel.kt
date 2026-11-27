@@ -45,7 +45,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     )
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
 
-    private var allVideos: List<VideoItem> = emptyList()
+    private var mediaVideos: List<VideoItem> = emptyList()
+    private var hiddenVideos: List<VideoItem> = emptyList()
+
+    /** MediaStore 结果与隐藏目录视频合并，路径重复时以 MediaStore 为准 */
+    private val allVideos: List<VideoItem>
+        get() {
+            if (hiddenVideos.isEmpty()) return mediaVideos
+            val paths = mediaVideos.mapNotNullTo(HashSet()) { it.path }
+            return mediaVideos + hiddenVideos.filter { it.path !in paths }
+        }
     private var hiddenJob: Job? = null
     private var metadataJob: Job? = null
     private var lastShowSystemHidden = SettingsRepository.state.value.showSystemHiddenFolders
@@ -77,25 +86,27 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         hiddenJob?.cancel()
         metadataJob?.cancel()
         viewModelScope.launch {
+            val showSystemHidden = SettingsRepository.state.value.showSystemHiddenFolders
+            // 隐藏目录只能遍历文件系统，先用上次扫描的缓存秒显，避免每次冷启动都等一两秒
+            hiddenVideos = if (showSystemHidden) repository.loadCachedHiddenVideos() else emptyList()
             _state.update { it.copy(loading = true) }
             // 先展示 MediaStore 结果，保证首屏秒显
             val visible = repository.loadVideos()
-            allVideos = visible
+            mediaVideos = visible
             rebuild()
             _state.update { it.copy(loading = false) }
 
-            if (!SettingsRepository.state.value.showSystemHiddenFolders) return@launch
-            // 隐藏目录只能遍历文件系统，较慢，放到首屏之后异步扫描并合并
+            if (!showSystemHidden) return@launch
+            // 缓存先顶上，后台再完整扫描一次并覆盖
             hiddenJob = viewModelScope.launch hidden@{
                 val hidden = repository.loadHiddenVideos()
-                if (hidden.isEmpty()) return@hidden
-                val existingPaths = allVideos.mapNotNullTo(HashSet()) { it.path }
-                allVideos = allVideos + hidden.filter { it.path !in existingPaths }
+                hiddenVideos = hidden
                 rebuild()
+                if (hidden.isEmpty()) return@hidden
                 // 隐藏视频的时长/分辨率后台补齐，边补边刷新列表
                 metadataJob = viewModelScope.launch {
                     repository.hiddenMetadataUpdates(hidden).collect { updated ->
-                        allVideos = allVideos.map { if (it.id == updated.id) updated else it }
+                        hiddenVideos = hiddenVideos.map { if (it.id == updated.id) updated else it }
                         rebuild()
                     }
                 }

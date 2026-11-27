@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 class MediaRepository(private val context: Context) {
@@ -22,6 +24,11 @@ class MediaRepository(private val context: Context) {
     /** 隐藏视频元数据缓存：路径 -> 修改时间/大小/时长/宽高 */
     private val metaCache by lazy {
         context.getSharedPreferences("hidden_video_meta", Context.MODE_PRIVATE)
+    }
+
+    /** 上次遍历得到的隐藏目录视频列表缓存，用于冷启动秒显 */
+    private val scanCache by lazy {
+        context.getSharedPreferences("hidden_video_scan", Context.MODE_PRIVATE)
     }
 
     suspend fun loadVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
@@ -101,7 +108,64 @@ class MediaRepository(private val context: Context) {
             scanDir(root, depth = 0, insideHidden = false, budget = budget, out = result)
             if (budget[0] <= 0) break
         }
+        // 扫描结果为空通常是权限缺失或遍历失败，此时保留上次缓存，避免清空冷启动的秒显数据
+        if (result.isNotEmpty()) saveCachedHiddenVideos(result)
         result
+    }
+
+    /**
+     * 读取上次遍历得到的隐藏目录视频，供冷启动秒显。
+     * 文件系统遍历需要一两秒，先用缓存顶上，后台扫描完成后再整体覆盖。
+     */
+    suspend fun loadCachedHiddenVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
+        val raw = scanCache.getString("items", null) ?: return@withContext emptyList()
+        try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                val path = obj.optString("p").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                VideoItem(
+                    id = negativeId(path),
+                    uri = Uri.fromFile(File(path)),
+                    title = obj.optString("t").ifBlank { path.substringAfterLast('/') },
+                    path = path,
+                    durationMs = obj.optLong("d"),
+                    size = obj.optLong("s"),
+                    dateAdded = obj.optLong("m"),
+                    bucketId = obj.optString("b"),
+                    bucketName = obj.optString("n").ifBlank { "隐藏文件夹" },
+                    width = obj.optInt("w"),
+                    height = obj.optInt("h"),
+                    mimeType = null
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveCachedHiddenVideos(items: List<VideoItem>) {
+        try {
+            val arr = JSONArray()
+            items.forEach { video ->
+                val path = video.path ?: return@forEach
+                arr.put(
+                    JSONObject()
+                        .put("p", path)
+                        .put("t", video.title)
+                        .put("d", video.durationMs)
+                        .put("s", video.size)
+                        .put("m", video.dateAdded)
+                        .put("b", video.bucketId)
+                        .put("n", video.bucketName)
+                        .put("w", video.width)
+                        .put("h", video.height)
+                )
+            }
+            scanCache.edit().putString("items", arr.toString()).apply()
+        } catch (_: Exception) {
+            // 缓存写入失败不影响正常扫描结果
+        }
     }
 
     /**
