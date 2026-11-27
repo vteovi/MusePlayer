@@ -224,7 +224,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private suspend fun buildMediaItem(entry: PlayEntry, probeMime: Boolean = false): MediaItem {
-        val metadata = MediaMetadata.Builder().setArtist("Muse Player")
+        val metadata = MediaMetadata.Builder().setArtist("MusePlayer")
         // 网络视频的标题若只是占位（通用文件名或域名），不写死标题，
         // 让播放器读取流内的元数据（如 ID3 标题）来展示真实名称
         if (!(entry.isNetwork && NetworkTitles.isPlaceholder(entry.title))) {

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 轻量版与完整版可同时安装，名称加后缀便于区分 -->
-    <string name="app_name">Muse Player Lite</string>
+    <string name="app_name">MusePlayer Lite</string>
 </resources>

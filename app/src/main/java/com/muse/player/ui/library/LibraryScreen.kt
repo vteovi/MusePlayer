@@ -334,7 +334,7 @@ fun LibraryScreen(
                         state.folders.firstOrNull { it.bucketId == id }?.name
                     }
                     Text(
-                        text = folderName ?: "Muse Player",
+                        text = folderName ?: "MusePlayer",
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -823,7 +823,7 @@ fun LibraryScreen(
                 MenuAction("复制路径", Icons.Rounded.ContentCopy) {
                     val text = video.path ?: video.uri.toString()
                     val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    manager?.setPrimaryClip(ClipData.newPlainText("Muse Player", text))
+                    manager?.setPrimaryClip(ClipData.newPlainText("MusePlayer", text))
                     Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
                 },
                 if (openFolder) {
@@ -914,7 +914,7 @@ private fun PermissionScreen(
         Text("需要视频访问权限", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Muse Player 需要读取设备上的视频，才能建立媒体库并播放。",
+            text = "MusePlayer 需要读取设备上的视频，才能建立媒体库并播放。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

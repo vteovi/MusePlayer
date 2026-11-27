@@ -107,7 +107,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Muse Player",
+                    text = "MusePlayer",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -258,7 +258,7 @@ private fun LicensesDialog(onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = "Muse Player 基于 MIT 许可证开源。",
+                    text = "MusePlayer 基于 MIT 许可证开源。",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(12.dp))

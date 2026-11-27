@@ -62,6 +62,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: Muse Player v${{ steps.apk.outputs.version }}
+          name: MusePlayer v${{ steps.apk.outputs.version }}
           files: out/*.apk
           generate_release_notes: true

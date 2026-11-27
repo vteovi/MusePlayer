@@ -3,6 +3,11 @@
 记录格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 未单独打标签的中间版本会并入其后的正式发布。
 
+## [2.6.34] - 2026-11-27
+
+### 调整
+- 应用名称由 Muse Player 改为 MusePlayer（去掉中间空格），轻量版同步改为 MusePlayer Lite；包名与应用数据不受影响，可直接覆盖安装
+
 ## [2.6.33] - 2026-11-27
 
 ### 优化

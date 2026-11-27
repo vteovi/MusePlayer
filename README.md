@@ -1,4 +1,4 @@
-# Muse Player
+# MusePlayer
 
 一款使用 Kotlin + Jetpack Compose + Media3（ExoPlayer）实现的 Android 本地 / 局域网视频播放器，界面与交互参考 MX Player。内置 Media3 与 libVLC 双播放引擎：常规视频走系统硬解，遇到系统解不了的格式（如 10bit HEVC）自动切到 libVLC 软解续播。
 

@@ -284,7 +284,7 @@ fun SettingsScreen(
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SectionTitle("关于")
             ActionRow(
-                title = "关于 Muse Player",
+                title = "关于 MusePlayer",
                 subtitle = "版本 ${BuildConfig.VERSION_NAME} · 开源许可与项目信息",
                 onClick = onOpenAbout
             )

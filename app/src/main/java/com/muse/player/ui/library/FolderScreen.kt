@@ -176,7 +176,7 @@ fun FolderContent(
                 MenuAction("复制路径", Icons.Rounded.ContentCopy) {
                     val text = video.path ?: video.uri.toString()
                     val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    manager?.setPrimaryClip(ClipData.newPlainText("Muse Player", text))
+                    manager?.setPrimaryClip(ClipData.newPlainText("MusePlayer", text))
                     Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
                 }
             ),
